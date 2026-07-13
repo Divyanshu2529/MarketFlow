@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { RevenueChart } from "@/components/charts/RevenueChart";
 
 type Company = {
   ticker: string;
@@ -49,17 +50,15 @@ export default async function CompanyPage({
         <MetricCard title="Debt" value={company.debt} />
         <MetricCard title="Cash Flow" value={company.cash_flow} />
       </div>
+
+      <div className="mt-8">
+        <RevenueChart />
+      </div>
     </DashboardLayout>
   );
 }
 
-function MetricCard({
-  title,
-  value,
-}: {
-  title: string;
-  value: string;
-}) {
+function MetricCard({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-xl border bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{title}</p>
