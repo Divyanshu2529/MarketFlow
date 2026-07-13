@@ -7,6 +7,7 @@ import { EPSChart } from "@/components/charts/EPSChart";
 import { AIRecommendationCard } from "@/components/company/AIRecommendationCard";
 import { SentimentCard } from "@/components/company/SentimentCard";
 import { NewsSection } from "@/components/company/NewsSection";
+import { SECFilings } from "@/components/company/SECFilings";
 
 type Company = {
   ticker: string;
@@ -62,8 +63,13 @@ export default async function CompanyPage({
 
         <SentimentCard />
       </div>
+      
       <div className="mt-8">
         <NewsSection />
+      </div>
+
+      <div className="mt-8">
+        <SECFilings />
       </div>
     </DashboardLayout>
   );
