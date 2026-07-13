@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { CompanyHeader } from "@/components/company/CompanyHeader";
 import { FinancialMetrics } from "@/components/company/FinancialMetrics";
 import { RevenueChart } from "@/components/charts/RevenueChart";
+import { EPSChart } from "@/components/charts/EPSChart";
 
 type Company = {
   ticker: string;
@@ -45,8 +46,9 @@ export default async function CompanyPage({
         cashFlow={company.cash_flow}
       />
 
-      <div className="mt-8">
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <RevenueChart />
+        <EPSChart />
       </div>
     </DashboardLayout>
   );
