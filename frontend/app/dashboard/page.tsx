@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { CompanySearch } from "@/components/company/CompanySearch";
 
 export default function DashboardPage() {
   return (
@@ -19,10 +20,9 @@ export default function DashboardPage() {
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Search Company</h2>
 
-          <input
-            placeholder="Search by company name or ticker..."
-            className="mt-4 w-full rounded-xl border px-4 py-3 outline-none focus:border-purple-500"
-          />
+          <div className="mt-4">
+            <CompanySearch />
+          </div>
         </div>
 
         {/* Featured Companies */}
@@ -68,7 +68,7 @@ function CompanyCard({
   return (
     <a
       href={`/company/${ticker}`}
-      className="rounded-xl border bg-white p-5 shadow-sm transition hover:shadow-md hover:border-purple-400"
+      className="rounded-xl border bg-white p-5 shadow-sm transition hover:border-purple-400 hover:shadow-md"
     >
       <h3 className="font-semibold text-slate-900">{name}</h3>
 
