@@ -11,16 +11,16 @@ import { SECFilings } from "@/components/company/SECFilings";
 import { CompetitorComparison } from "@/components/company/CompetitorComparison";
 
 type Company = {
-  ticker: string;
-  name: string;
+  symbol: string;
+  companyName: string;
   exchange: string;
-  market_cap: string;
-  revenue: string;
-  pe_ratio: number;
-  eps: number;
-  profit_margin: string;
-  debt: string;
-  cash_flow: string;
+  marketCap?: number;
+  revenue?: number;
+  pe?: number;
+  eps?: number;
+  profitMargin?: number;
+  debt?: number;
+  cashFlow?: number;
 };
 
 export default async function CompanyPage({
@@ -36,19 +36,19 @@ export default async function CompanyPage({
   return (
     <DashboardLayout>
       <CompanyHeader
-        name={company.name}
-        ticker={company.ticker}
+        name={company.companyName}
+        ticker={company.symbol}
         exchange={company.exchange}
       />
 
       <FinancialMetrics
-        marketCap={company.market_cap}
-        revenue={company.revenue}
-        peRatio={company.pe_ratio}
-        eps={company.eps}
-        profitMargin={company.profit_margin}
-        debt={company.debt}
-        cashFlow={company.cash_flow}
+        marketCap={company.marketCap ? `$${company.marketCap.toLocaleString()}` : "N/A"}
+        revenue={company.revenue ? `$${company.revenue.toLocaleString()}` : "N/A"}
+        peRatio={company.pe ?? 0}
+        eps={company.eps ?? 0}
+        profitMargin={company.profitMargin ? `${company.profitMargin}%` : "N/A"}
+        debt={company.debt ? `$${company.debt.toLocaleString()}` : "N/A"}
+        cashFlow={company.cashFlow ? `$${company.cashFlow.toLocaleString()}` : "N/A"}
       />
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">

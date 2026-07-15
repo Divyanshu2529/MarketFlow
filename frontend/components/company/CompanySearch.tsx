@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { Search } from "lucide-react";
 
 type CompanySearchResult = {
-  ticker: string;
+  symbol: string;
   name: string;
   exchange: string;
 };
@@ -41,10 +41,10 @@ export function CompanySearch() {
     }
   }
 
-  function goToCompany(ticker: string) {
+  function goToCompany(symbol: string) {
     setQuery("");
     setResults([]);
-    router.push(`/company/${ticker}`);
+    router.push(`/company/${symbol}`);
   }
 
   return (
@@ -73,8 +73,8 @@ export function CompanySearch() {
           {!loading &&
             results.map((company) => (
               <button
-                key={company.ticker}
-                onClick={() => goToCompany(company.ticker)}
+                key={company.symbol}
+                onClick={() => goToCompany(company.symbol)}
                 className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-purple-50"
               >
                 <div>
@@ -83,7 +83,7 @@ export function CompanySearch() {
                 </div>
 
                 <span className="rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-700">
-                  {company.ticker}
+                  {company.symbol}
                 </span>
               </button>
             ))}
