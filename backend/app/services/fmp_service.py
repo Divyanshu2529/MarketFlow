@@ -106,3 +106,28 @@ async def get_company_financials(ticker: str):
             "debt": latest_balance.get("totalDebt"),
             "cashFlow": latest_cashflow.get("freeCashFlow"),
         }
+
+
+async def get_income_statement_history(ticker: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{FMP_BASE_URL}/income-statement",
+            params={
+                "symbol": ticker,
+                "period": "annual",
+                "limit": 5,
+                "apikey": FMP_API_KEY,
+            },
+        )
+
+        response.raise_for_status()
+        data = response.json()
+
+        return [
+            {
+                "year": item.get("fiscalYear"),
+                "revenue": item.get("revenue"),
+                "eps": item.get("eps"),
+            }
+            for item in reversed(data)
+        ]

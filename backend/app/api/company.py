@@ -1,6 +1,11 @@
 from fastapi import APIRouter, HTTPException
 
-from app.services.fmp_service import search_companies, get_company_profile, get_company_financials
+from app.services.fmp_service import (
+    search_companies,
+    get_company_profile,
+    get_company_financials,
+    get_income_statement_history,
+)
 
 router = APIRouter(prefix="/api/company", tags=["Company"])
 
@@ -9,6 +14,12 @@ router = APIRouter(prefix="/api/company", tags=["Company"])
 async def search_company(q: str):
     results = await search_companies(q)
     return {"results": results}
+
+
+@router.get("/{ticker}/income-history")
+async def get_company_income_history(ticker: str):
+    history = await get_income_statement_history(ticker.upper())
+    return {"history": history}
 
 
 @router.get("/{ticker}")
