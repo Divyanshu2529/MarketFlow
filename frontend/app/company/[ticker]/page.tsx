@@ -16,12 +16,36 @@ type Company = {
   exchange: string;
   marketCap?: number;
   revenue?: number;
-  pe?: number;
+  peRatio?: number | null;
+  price?: number;
   eps?: number;
   profitMargin?: number;
   debt?: number;
   cashFlow?: number;
 };
+
+function formatCurrency(value?: number) {
+  if (!value) return "N/A";
+
+  if (value >= 1_000_000_000_000) {
+    return `$${(value / 1_000_000_000_000).toFixed(2)}T`;
+  }
+
+  if (value >= 1_000_000_000) {
+    return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  }
+
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1)}M`;
+  }
+
+  return `$${value.toLocaleString()}`;
+}
+
+function formatPercent(value?: number) {
+  if (value === undefined || value === null) return "N/A";
+  return `${(value * 100).toFixed(1)}%`;
+}
 
 export default async function CompanyPage({
   params,
@@ -33,6 +57,9 @@ export default async function CompanyPage({
   const response = await api.get<Company>(`/api/company/${ticker}`);
   const company = response.data;
 
+  const calculatedPeRatio =
+    company.peRatio ?? (company.price && company.eps ? company.price / company.eps : 0);
+
   return (
     <DashboardLayout>
       <CompanyHeader
@@ -42,13 +69,13 @@ export default async function CompanyPage({
       />
 
       <FinancialMetrics
-        marketCap={company.marketCap ? `$${company.marketCap.toLocaleString()}` : "N/A"}
-        revenue={company.revenue ? `$${company.revenue.toLocaleString()}` : "N/A"}
-        peRatio={company.pe ?? 0}
+        marketCap={formatCurrency(company.marketCap)}
+        revenue={formatCurrency(company.revenue)}
+        peRatio={Number(calculatedPeRatio.toFixed(2))}
         eps={company.eps ?? 0}
-        profitMargin={company.profitMargin ? `${company.profitMargin}%` : "N/A"}
-        debt={company.debt ? `$${company.debt.toLocaleString()}` : "N/A"}
-        cashFlow={company.cashFlow ? `$${company.cashFlow.toLocaleString()}` : "N/A"}
+        profitMargin={formatPercent(company.profitMargin)}
+        debt={formatCurrency(company.debt)}
+        cashFlow={formatCurrency(company.cashFlow)}
       />
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">

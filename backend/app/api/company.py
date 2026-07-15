@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from app.services.fmp_service import search_companies, get_company_profile
+from app.services.fmp_service import search_companies, get_company_profile, get_company_financials
 
 router = APIRouter(prefix="/api/company", tags=["Company"])
 
@@ -13,9 +13,15 @@ async def search_company(q: str):
 
 @router.get("/{ticker}")
 async def get_company(ticker: str):
-    company = await get_company_profile(ticker.upper())
+    ticker = ticker.upper()
+
+    company = await get_company_profile(ticker)
+    financials = await get_company_financials(ticker)
 
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    return company
+    return {
+        **company,
+        **financials,
+    }
