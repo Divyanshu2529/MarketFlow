@@ -24,6 +24,16 @@ type Company = {
   cashFlow?: number;
 };
 
+type IncomeHistoryItem = {
+  year: string;
+  revenue: number;
+  eps: number;
+};
+
+type IncomeHistoryResponse = {
+  history: IncomeHistoryItem[];
+};
+
 function formatCurrency(value?: number) {
   if (!value) return "N/A";
 
@@ -54,8 +64,13 @@ export default async function CompanyPage({
 }) {
   const { ticker } = await params;
 
-  const response = await api.get<Company>(`/api/company/${ticker}`);
-  const company = response.data;
+  const [companyResponse, historyResponse] = await Promise.all([
+    api.get<Company>(`/api/company/${ticker}`),
+    api.get<IncomeHistoryResponse>(`/api/company/${ticker}/income-history`),
+  ]);
+
+  const company = companyResponse.data;
+  const incomeHistory = historyResponse.data.history;
 
   const calculatedPeRatio =
     company.peRatio ?? (company.price && company.eps ? company.price / company.eps : 0);
@@ -80,13 +95,13 @@ export default async function CompanyPage({
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <RevenueChart />
+          <RevenueChart data={incomeHistory} />
         </div>
 
         <AIRecommendationCard />
 
         <div className="lg:col-span-2">
-          <EPSChart />
+          <EPSChart data={incomeHistory} />
         </div>
 
         <SentimentCard />

@@ -9,9 +9,15 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-import { epsData } from "@/lib/mock-data";
 
-export function EPSChart() {
+type EPSChartProps = {
+  data: {
+    year: string;
+    eps: number;
+  }[];
+};
+
+export function EPSChart({ data }: EPSChartProps) {
   return (
     <div className="rounded-2xl border bg-white p-6 shadow-sm">
       <div className="mb-6">
@@ -23,7 +29,7 @@ export function EPSChart() {
 
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={epsData}>
+          <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="year" />
             <YAxis />

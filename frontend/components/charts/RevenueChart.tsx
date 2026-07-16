@@ -9,9 +9,20 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-import { revenueData } from "@/lib/mock-data";
 
-export function RevenueChart() {
+type RevenueChartProps = {
+  data: {
+    year: string;
+    revenue: number;
+  }[];
+};
+
+export function RevenueChart({ data }: RevenueChartProps) {
+  const chartData = data.map((item) => ({
+    year: item.year,
+    revenue: Number((item.revenue / 1_000_000_000).toFixed(1)),
+  }));
+
   return (
     <div className="rounded-2xl border bg-white p-6 shadow-sm">
       <div className="mb-6">
@@ -25,7 +36,7 @@ export function RevenueChart() {
 
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={revenueData}>
+          <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="year" />
             <YAxis />
