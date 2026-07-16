@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from app.services.news_service import get_company_news
 
 from app.services.fmp_service import (
     search_companies,
@@ -20,6 +21,17 @@ async def search_company(q: str):
 async def get_company_income_history(ticker: str):
     history = await get_income_statement_history(ticker.upper())
     return {"history": history}
+
+
+@router.get("/{ticker}/news")
+async def get_company_news_route(ticker: str):
+    company = await get_company_profile(ticker.upper())
+
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    news = await get_company_news(company.get("companyName", ticker))
+    return {"news": news}
 
 
 @router.get("/{ticker}")
