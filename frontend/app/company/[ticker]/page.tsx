@@ -34,6 +34,18 @@ type IncomeHistoryResponse = {
   history: IncomeHistoryItem[];
 };
 
+type NewsItem = {
+  title: string;
+  publisher: string;
+  publishedDate: string;
+  summary: string;
+  url: string;
+};
+
+type NewsResponse = {
+  news: NewsItem[];
+};
+
 function formatCurrency(value?: number) {
   if (!value) return "N/A";
 
@@ -64,13 +76,15 @@ export default async function CompanyPage({
 }) {
   const { ticker } = await params;
 
-  const [companyResponse, historyResponse] = await Promise.all([
+  const [companyResponse, historyResponse, newsResponse] = await Promise.all([
     api.get<Company>(`/api/company/${ticker}`),
     api.get<IncomeHistoryResponse>(`/api/company/${ticker}/income-history`),
+    api.get<NewsResponse>(`/api/company/${ticker}/news`),
   ]);
 
   const company = companyResponse.data;
   const incomeHistory = historyResponse.data.history;
+  const news = newsResponse.data.news;
 
   const calculatedPeRatio =
     company.peRatio ?? (company.price && company.eps ? company.price / company.eps : 0);
@@ -108,7 +122,7 @@ export default async function CompanyPage({
       </div>
 
       <div className="mt-8">
-        <NewsSection />
+        <NewsSection news={news} />
       </div>
 
       <div className="mt-8">

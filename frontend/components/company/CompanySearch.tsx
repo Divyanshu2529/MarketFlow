@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Search } from "lucide-react";
@@ -17,29 +17,31 @@ export function CompanySearch() {
   const [results, setResults] = useState<CompanySearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
-  async function handleSearch(value: string) {
-    setQuery(value);
-
-    if (value.trim().length < 1) {
+  useEffect(() => {
+    if (query.trim().length < 2) {
       setResults([]);
       return;
     }
 
-    setLoading(true);
+    const timeoutId = setTimeout(async () => {
+      setLoading(true);
 
-    try {
-      const response = await api.get<{ results: CompanySearchResult[] }>(
-        `/api/company/search?q=${value}`
-      );
+      try {
+        const response = await api.get<{ results: CompanySearchResult[] }>(
+          `/api/company/search?q=${query}`
+        );
 
-      setResults(response.data.results);
-    } catch (error) {
-      console.error("Search failed:", error);
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+        setResults(response.data.results);
+      } catch (error) {
+        console.error("Search failed:", error);
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [query]);
 
   function goToCompany(symbol: string) {
     setQuery("");
@@ -54,7 +56,7 @@ export function CompanySearch() {
 
         <input
           value={query}
-          onChange={(e) => handleSearch(e.target.value)}
+          onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by company name or ticker..."
           className="w-full outline-none"
         />
@@ -66,7 +68,7 @@ export function CompanySearch() {
             <p className="p-4 text-sm text-slate-500">Searching...</p>
           )}
 
-          {!loading && results.length === 0 && (
+          {!loading && query.trim().length >= 2 && results.length === 0 && (
             <p className="p-4 text-sm text-slate-500">No companies found.</p>
           )}
 
