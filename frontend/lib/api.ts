@@ -6,3 +6,11 @@ export const api = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+export const searchCompanies = async (query: string) => {
+  const response = await api.get("/api/company/search", {
+    params: { q: query },
+  });
+
+  return response.data;
+};

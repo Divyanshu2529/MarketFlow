@@ -30,10 +30,6 @@ type IncomeHistoryItem = {
   eps: number;
 };
 
-type IncomeHistoryResponse = {
-  history: IncomeHistoryItem[];
-};
-
 type NewsItem = {
   title: string;
   publisher: string;
@@ -42,12 +38,16 @@ type NewsItem = {
   url: string;
 };
 
-type NewsResponse = {
+type CompanyOverviewResponse = {
+  company: Company;
+  history: IncomeHistoryItem[];
   news: NewsItem[];
 };
 
-function formatCurrency(value?: number) {
-  if (!value) return "N/A";
+function formatCurrency(value?: number | null) {
+  if (value === undefined || value === null) {
+    return "N/A";
+  }
 
   if (value >= 1_000_000_000_000) {
     return `$${(value / 1_000_000_000_000).toFixed(2)}T`;
@@ -64,8 +64,11 @@ function formatCurrency(value?: number) {
   return `$${value.toLocaleString()}`;
 }
 
-function formatPercent(value?: number) {
-  if (value === undefined || value === null) return "N/A";
+function formatPercent(value?: number | null) {
+  if (value === undefined || value === null) {
+    return "N/A";
+  }
+
   return `${(value * 100).toFixed(1)}%`;
 }
 
@@ -76,18 +79,23 @@ export default async function CompanyPage({
 }) {
   const { ticker } = await params;
 
-  const [companyResponse, historyResponse, newsResponse] = await Promise.all([
-    api.get<Company>(`/api/company/${ticker}`),
-    api.get<IncomeHistoryResponse>(`/api/company/${ticker}/income-history`),
-    api.get<NewsResponse>(`/api/company/${ticker}/news`),
-  ]);
+  const normalizedTicker = ticker.trim().toUpperCase();
 
-  const company = companyResponse.data;
-  const incomeHistory = historyResponse.data.history;
-  const news = newsResponse.data.news;
+  const response = await api.get<CompanyOverviewResponse>(
+    `/api/company/${normalizedTicker}/overview`
+  );
+
+  const {
+    company,
+    history: incomeHistory,
+    news,
+  } = response.data;
 
   const calculatedPeRatio =
-    company.peRatio ?? (company.price && company.eps ? company.price / company.eps : 0);
+    company.peRatio ??
+    (company.price && company.eps
+      ? company.price / company.eps
+      : 0);
 
   return (
     <DashboardLayout>

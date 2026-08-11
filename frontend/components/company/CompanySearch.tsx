@@ -1,87 +1,146 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
 import { Search } from "lucide-react";
+import { api } from "@/lib/api";
 
 type CompanySearchResult = {
   symbol: string;
   name: string;
-  exchange: string;
+  exchange?: string;
+};
+
+type CompanySearchResponse = {
+  results: CompanySearchResult[];
 };
 
 export function CompanySearch() {
   const router = useRouter();
+
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CompanySearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [selectedCompany, setSelectedCompany] =
+    useState<CompanySearchResult | null>(null);
 
-  useEffect(() => {
-    if (query.trim().length < 2) {
-      setResults([]);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submitCompanySearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    // After a company has been selected, Search only navigates.
+    if (selectedCompany) {
+      router.push(`/company/${selectedCompany.symbol}`);
       return;
     }
 
-    const timeoutId = setTimeout(async () => {
-      setLoading(true);
+    const normalizedQuery = query.trim();
 
-      try {
-        const response = await api.get<{ results: CompanySearchResult[] }>(
-          `/api/company/search?q=${query}`
-        );
+    if (normalizedQuery.length < 2 || loading) {
+      return;
+    }
 
-        setResults(response.data.results);
-      } catch (error) {
-        console.error("Search failed:", error);
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
-  }, [query]);
-
-  function goToCompany(symbol: string) {
-    setQuery("");
+    setLoading(true);
+    setError("");
+    setHasSearched(true);
     setResults([]);
-    router.push(`/company/${symbol}`);
+
+    try {
+      // Exactly one request for this submitted search.
+      const response = await api.get<CompanySearchResponse>(
+        "/api/company/search",
+        {
+          params: {
+            q: normalizedQuery,
+          },
+        }
+      );
+
+      setResults(response.data.results ?? []);
+    } catch (error) {
+      console.error("Company search failed:", error);
+      setError("Unable to search companies. Please try again.");
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function selectCompany(company: CompanySearchResult) {
+    setSelectedCompany(company);
+    setQuery(`${company.name} (${company.symbol})`);
+    setResults([]);
+    setHasSearched(false);
+    setError("");
+  }
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    setSelectedCompany(null);
+    setResults([]);
+    setHasSearched(false);
+    setError("");
   }
 
   return (
     <div className="relative">
-      <div className="flex items-center gap-3 rounded-xl border bg-white px-4 py-3">
-        <Search size={18} className="text-slate-400" />
+      <form
+        onSubmit={submitCompanySearch}
+        className="flex items-center gap-3 rounded-xl border bg-white px-4 py-3"
+      >
+        <Search size={18} className="shrink-0 text-slate-400" />
 
         <input
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(event) => handleQueryChange(event.target.value)}
           placeholder="Search by company name or ticker..."
           className="w-full outline-none"
         />
-      </div>
 
-      {query && (
-        <div className="absolute z-20 mt-2 w-full rounded-xl border bg-white shadow-lg">
-          {loading && (
-            <p className="p-4 text-sm text-slate-500">Searching...</p>
+        <button
+          type="submit"
+          disabled={
+            loading ||
+            (!selectedCompany && query.trim().length < 2)
+          }
+          className="rounded-lg bg-purple-500 px-5 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? "Searching..." : selectedCompany ? "Open" : "Search"}
+        </button>
+      </form>
+
+      {(results.length > 0 || error || hasSearched) && !selectedCompany && (
+        <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border bg-white shadow-lg">
+          {error && (
+            <p className="p-4 text-sm text-red-600">{error}</p>
           )}
 
-          {!loading && query.trim().length >= 2 && results.length === 0 && (
-            <p className="p-4 text-sm text-slate-500">No companies found.</p>
+          {!loading && !error && hasSearched && results.length === 0 && (
+            <p className="p-4 text-sm text-slate-500">
+              No companies found.
+            </p>
           )}
 
           {!loading &&
-            results.map((company) => (
+            results.map((company, index) => (
               <button
-                key={company.symbol}
-                onClick={() => goToCompany(company.symbol)}
+                key={`${company.symbol}-${company.exchange ?? "unknown"}-${index}`}
+                type="button"
+                onClick={() => selectCompany(company)}
                 className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-purple-50"
               >
                 <div>
-                  <p className="font-medium text-slate-900">{company.name}</p>
-                  <p className="text-sm text-slate-500">{company.exchange}</p>
+                  <p className="font-medium text-slate-900">
+                    {company.name}
+                  </p>
+
+                  {company.exchange && (
+                    <p className="text-sm text-slate-500">
+                      {company.exchange}
+                    </p>
+                  )}
                 </div>
 
                 <span className="rounded-full bg-purple-100 px-3 py-1 text-sm font-medium text-purple-700">
