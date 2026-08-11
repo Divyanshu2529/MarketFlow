@@ -44,6 +44,12 @@ type CompanyOverviewResponse = {
   news: NewsItem[];
 };
 
+type AIRecommendation = {
+  recommendation: string;
+  confidence: number;
+  reasoning: string;
+};
+
 function formatCurrency(value?: number | null) {
   if (value === undefined || value === null) {
     return "N/A";
@@ -81,15 +87,22 @@ export default async function CompanyPage({
 
   const normalizedTicker = ticker.trim().toUpperCase();
 
-  const response = await api.get<CompanyOverviewResponse>(
-    `/api/company/${normalizedTicker}/overview`
-  );
+  const [overviewResponse, recommendationResponse] = await Promise.all([
+    api.get<CompanyOverviewResponse>(
+      `/api/company/${normalizedTicker}/overview`
+    ),
+    api.get<AIRecommendation>(
+      `/api/company/${normalizedTicker}/recommendation`
+    ),
+  ]);
 
   const {
     company,
     history: incomeHistory,
     news,
-  } = response.data;
+  } = overviewResponse.data;
+
+  const recommendation = recommendationResponse.data;
 
   const calculatedPeRatio =
     company.peRatio ??
@@ -120,7 +133,11 @@ export default async function CompanyPage({
           <RevenueChart data={incomeHistory} />
         </div>
 
-        <AIRecommendationCard />
+        <AIRecommendationCard
+          recommendation={recommendation.recommendation}
+          confidence={recommendation.confidence}
+          reasoning={recommendation.reasoning}
+        />
 
         <div className="lg:col-span-2">
           <EPSChart data={incomeHistory} />
