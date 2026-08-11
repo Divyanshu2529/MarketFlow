@@ -6,6 +6,7 @@ import httpx
 from app.cache.redis_cache import redis_cache
 from app.services.fmp_client import fmp_client
 from app.services.news_service import get_company_news
+from app.services.ai_service import generate_investment_recommendation
 
 
 SEARCH_CACHE_TTL = 60 * 60
@@ -233,3 +234,49 @@ async def get_company_overview(
         )
 
         return None
+    
+AI_RECOMMENDATION_CACHE_TTL = 60 * 60
+
+
+async def get_company_recommendation(
+    ticker: str,
+) -> dict[str, Any] | None:
+    normalized_ticker = ticker.strip().upper()
+
+    if not normalized_ticker:
+        return None
+
+    cache_key = f"ai-recommendation:{normalized_ticker}"
+
+    try:
+        cached = await redis_cache.get(cache_key)
+
+        if cached is not None:
+            print(f"REDIS AI RECOMMENDATION CACHE HIT: {normalized_ticker}")
+            return cached
+
+    except Exception as error:
+        print(f"Redis AI cache read failed: {error}")
+
+    overview = await get_company_overview(normalized_ticker)
+
+    if overview is None:
+        return None
+
+    recommendation = await generate_investment_recommendation(
+        overview
+    )
+
+    try:
+        await redis_cache.set(
+            cache_key,
+            recommendation,
+            ttl=AI_RECOMMENDATION_CACHE_TTL,
+        )
+
+        print(f"REDIS AI RECOMMENDATION STORED: {normalized_ticker}")
+
+    except Exception as error:
+        print(f"Redis AI cache write failed: {error}")
+
+    return recommendation

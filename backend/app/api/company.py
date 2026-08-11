@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.services.company_service import (
     get_company_overview,
+    get_company_recommendation,
     search_companies,
 )
 
@@ -33,3 +34,16 @@ async def get_company_overview_route(ticker: str):
         )
 
     return overview
+
+
+@router.get("/{ticker}/recommendation")
+async def get_company_recommendation_route(ticker: str):
+    recommendation = await get_company_recommendation(ticker)
+
+    if recommendation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Company not found",
+        )
+
+    return recommendation
