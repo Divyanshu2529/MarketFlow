@@ -543,3 +543,191 @@ async def get_company_filings(
         for filing in processed
         if filing is not None
     ]
+
+COMPETITOR_CACHE_TTL = 60 * 60
+
+
+async def get_company_competitors(
+    ticker: str,
+) -> list[dict[str, Any]]:
+    normalized_ticker = ticker.strip().upper()
+
+    if not normalized_ticker:
+        return []
+
+    cache_key = f"competitors:{normalized_ticker}"
+
+    try:
+        cached = await redis_cache.get(cache_key)
+
+        if cached is not None:
+            print(
+                f"REDIS COMPETITOR CACHE HIT: "
+                f"{normalized_ticker}"
+            )
+            return cached
+
+    except Exception as error:
+        print(
+            f"Redis competitor cache read failed: {error}"
+        )
+
+    try:
+        peer_data = await fmp_client.get(
+            "/stock-peers",
+            {
+                "symbol": normalized_ticker,
+            },
+        )
+
+        peer_symbols: list[str] = []
+
+        if isinstance(peer_data, list):
+            for item in peer_data:
+                symbol = item.get("symbol")
+
+                if (
+                    symbol
+                    and symbol != normalized_ticker
+                    and symbol not in peer_symbols
+                ):
+                    peer_symbols.append(symbol)
+
+        # Keep API usage reasonable.
+        selected_symbols = [
+            normalized_ticker,
+            *peer_symbols[:2],
+        ]
+
+        async def fetch_metrics(
+            symbol: str,
+        ) -> dict[str, Any] | None:
+            try:
+                (
+                    profile_data,
+                    income_data,
+                    ratios_data,
+                ) = await asyncio.gather(
+                    fmp_client.get(
+                        "/profile",
+                        {
+                            "symbol": symbol,
+                        },
+                    ),
+                    fmp_client.get(
+                        "/income-statement",
+                        {
+                            "symbol": symbol,
+                            "period": "annual",
+                            "limit": 1,
+                        },
+                    ),
+                    fmp_client.get(
+                        "/ratios",
+                        {
+                            "symbol": symbol,
+                            "period": "annual",
+                            "limit": 1,
+                        },
+                    ),
+                )
+
+                profile = (
+                    profile_data[0]
+                    if isinstance(profile_data, list)
+                    and profile_data
+                    else {}
+                )
+
+                income = (
+                    income_data[0]
+                    if isinstance(income_data, list)
+                    and income_data
+                    else {}
+                )
+
+                ratios = (
+                    ratios_data[0]
+                    if isinstance(ratios_data, list)
+                    and ratios_data
+                    else {}
+                )
+
+                if not profile:
+                    return None
+
+                return {
+                    "company": profile.get(
+                        "companyName",
+                        symbol,
+                    ),
+                    "ticker": symbol,
+                    "marketCap": profile.get(
+                        "marketCap"
+                    ),
+                    "revenue": income.get(
+                        "revenue"
+                    ),
+                    "peRatio": ratios.get(
+                        "priceEarningsRatio"
+                    ),
+                    "eps": income.get("eps"),
+                    "profitMargin": ratios.get(
+                        "netProfitMargin"
+                    ),
+                }
+
+            except (
+                httpx.HTTPStatusError,
+                httpx.RequestError,
+            ) as error:
+                print(
+                    f"Competitor data failed for "
+                    f"{symbol}: {error}"
+                )
+
+                return None
+
+        processed = await asyncio.gather(
+            *[
+                fetch_metrics(symbol)
+                for symbol in selected_symbols
+            ]
+        )
+
+        competitors = [
+            item
+            for item in processed
+            if item is not None
+        ]
+
+        try:
+            await redis_cache.set(
+                cache_key,
+                competitors,
+                ttl=COMPETITOR_CACHE_TTL,
+            )
+
+            print(
+                f"REDIS COMPETITOR DATA STORED: "
+                f"{normalized_ticker}"
+            )
+
+        except Exception as error:
+            print(
+                f"Redis competitor cache write failed: "
+                f"{error}"
+            )
+
+        return competitors
+
+    except (
+        httpx.HTTPStatusError,
+        httpx.RequestError,
+    ) as error:
+        print(
+            f"Competitor lookup failed for "
+            f"{normalized_ticker}: {error}"
+        )
+
+        return []

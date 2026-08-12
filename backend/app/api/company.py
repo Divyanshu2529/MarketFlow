@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from app.services.company_service import (
+    get_company_competitors,
     get_company_filings,
     get_company_overview,
     get_company_recommendation,
@@ -67,3 +68,7 @@ async def get_company_sentiment_route(ticker: str):
 @router.get("/{ticker}/filings")
 async def get_company_filings_route(ticker: str):
     return await get_company_filings(ticker)
+
+@router.get("/{ticker}/competitors")
+async def get_company_competitors_route(ticker: str):
+    return await get_company_competitors(ticker)
