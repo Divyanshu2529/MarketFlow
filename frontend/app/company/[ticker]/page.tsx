@@ -139,7 +139,7 @@ export default async function CompanyPage({
       </div>
 
       <div className="mt-8">
-        <SECFilings />
+        <SECFilings ticker={normalizedTicker} />
       </div>
 
       <div className="mt-8">

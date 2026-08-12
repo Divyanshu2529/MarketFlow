@@ -170,3 +170,77 @@ Rules:
             "negative": 0,
             "overall": "Unavailable",
         }
+
+async def generate_sec_filing_summary(
+    filing_type: str,
+    filing_text: str,
+) -> dict[str, Any]:
+    prompt = f"""
+You are an equity research assistant analyzing an SEC filing.
+
+Filing type:
+{filing_type}
+
+Filing text:
+{filing_text}
+
+Return ONLY valid JSON in this exact format:
+
+{{
+  "summary": "Concise summary",
+  "keyPoints": [
+    "Important point 1",
+    "Important point 2",
+    "Important point 3"
+  ],
+  "risks": [
+    "Relevant risk 1",
+    "Relevant risk 2"
+  ]
+}}
+
+Rules:
+- base the analysis only on the provided filing
+- do not invent information
+- focus on financial performance, business changes, risks, and investor-relevant information
+- summary should be 3-5 sentences
+- keep key points concise
+"""
+
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+
+        if not response.text:
+            raise RuntimeError("Gemini returned an empty response")
+
+        text = response.text.strip()
+
+        if text.startswith("```"):
+            text = (
+                text.replace("```json", "")
+                .replace("```", "")
+                .strip()
+            )
+
+        result = json.loads(text)
+
+        return {
+            "summary": result.get(
+                "summary",
+                "Summary unavailable.",
+            ),
+            "keyPoints": result.get("keyPoints", []),
+            "risks": result.get("risks", []),
+        }
+
+    except Exception as error:
+        print(f"Gemini SEC summary failed: {error}")
+
+        return {
+            "summary": "SEC filing summary is temporarily unavailable.",
+            "keyPoints": [],
+            "risks": [],
+        }
