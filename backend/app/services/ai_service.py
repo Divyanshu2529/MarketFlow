@@ -18,6 +18,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 async def generate_investment_recommendation(
     company_data: dict[str, Any],
 ) -> dict[str, Any]:
+
     prompt = f"""
 You are an equity research assistant.
 
@@ -42,17 +43,46 @@ Rules:
 - do not invent missing financial information
 """
 
-    response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-    )
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
 
-    if not response.text:
-        raise RuntimeError("Gemini returned an empty response")
+        if not response.text:
+            raise RuntimeError("Gemini returned an empty response")
 
-    text = response.text.strip()
+        text = response.text.strip()
 
-    if text.startswith("```"):
-        text = text.replace("```json", "").replace("```", "").strip()
+        if text.startswith("```"):
+            text = (
+                text.replace("```json", "")
+                .replace("```", "")
+                .strip()
+            )
 
-    return json.loads(text)
+        result = json.loads(text)
+
+        return {
+            "recommendation": result.get(
+                "recommendation",
+                "Unavailable",
+            ),
+            "confidence": result.get("confidence", 0),
+            "reasoning": result.get(
+                "reasoning",
+                "AI analysis is currently unavailable.",
+            ),
+        }
+
+    except Exception as error:
+        print(f"Gemini recommendation failed: {error}")
+
+        return {
+            "recommendation": "Unavailable",
+            "confidence": 0,
+            "reasoning": (
+                "AI analysis is temporarily unavailable. "
+                "Please try again later."
+            ),
+        }
