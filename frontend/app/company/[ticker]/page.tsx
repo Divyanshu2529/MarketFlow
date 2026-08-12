@@ -50,6 +50,13 @@ type AIRecommendation = {
   reasoning: string;
 };
 
+type SentimentResponse = {
+  positive: number;
+  neutral: number;
+  negative: number;
+  overall: string;
+};
+
 function formatCurrency(value?: number | null) {
   if (value === undefined || value === null) {
     return "N/A";
@@ -87,12 +94,19 @@ export default async function CompanyPage({
 
   const normalizedTicker = ticker.trim().toUpperCase();
 
-  const [overviewResponse, recommendationResponse] = await Promise.all([
+  const [
+    overviewResponse,
+    recommendationResponse,
+    sentimentResponse,
+  ] = await Promise.all([
     api.get<CompanyOverviewResponse>(
       `/api/company/${normalizedTicker}/overview`
     ),
     api.get<AIRecommendation>(
       `/api/company/${normalizedTicker}/recommendation`
+    ),
+    api.get<SentimentResponse>(
+      `/api/company/${normalizedTicker}/sentiment`
     ),
   ]);
 
@@ -103,6 +117,7 @@ export default async function CompanyPage({
   } = overviewResponse.data;
 
   const recommendation = recommendationResponse.data;
+  const sentiment = sentimentResponse.data;
 
   const calculatedPeRatio =
     company.peRatio ??
@@ -143,7 +158,12 @@ export default async function CompanyPage({
           <EPSChart data={incomeHistory} />
         </div>
 
-        <SentimentCard />
+        <SentimentCard
+          positive={sentiment.positive}
+          neutral={sentiment.neutral}
+          negative={sentiment.negative}
+          overall={sentiment.overall}
+        />
       </div>
 
       <div className="mt-8">

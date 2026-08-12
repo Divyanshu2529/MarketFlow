@@ -18,7 +18,6 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 async def generate_investment_recommendation(
     company_data: dict[str, Any],
 ) -> dict[str, Any]:
-
     prompt = f"""
 You are an equity research assistant.
 
@@ -85,4 +84,89 @@ Rules:
                 "AI analysis is temporarily unavailable. "
                 "Please try again later."
             ),
+        }
+
+
+async def generate_news_sentiment(
+    news_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not news_items:
+        return {
+            "positive": 0,
+            "neutral": 100,
+            "negative": 0,
+            "overall": "Neutral",
+        }
+
+    prompt = f"""
+You are a financial news sentiment analyst.
+
+Analyze the following company news articles.
+
+News:
+{json.dumps(news_items, indent=2)}
+
+Return ONLY valid JSON in this exact format:
+
+{{
+  "positive": 0,
+  "neutral": 0,
+  "negative": 0,
+  "overall": "Positive | Neutral | Negative"
+}}
+
+Rules:
+- positive, neutral, and negative must be integers
+- the three percentages must add up to exactly 100
+- overall must reflect the dominant sentiment
+- analyze only the supplied news
+- do not invent information
+"""
+
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+
+        if not response.text:
+            raise RuntimeError("Gemini returned an empty response")
+
+        text = response.text.strip()
+
+        if text.startswith("```"):
+            text = (
+                text.replace("```json", "")
+                .replace("```", "")
+                .strip()
+            )
+
+        result = json.loads(text)
+
+        positive = int(result.get("positive", 0))
+        neutral = int(result.get("neutral", 0))
+        negative = int(result.get("negative", 0))
+
+        total = positive + neutral + negative
+
+        if total > 0 and total != 100:
+            positive = round((positive / total) * 100)
+            neutral = round((neutral / total) * 100)
+            negative = 100 - positive - neutral
+
+        return {
+            "positive": positive,
+            "neutral": neutral,
+            "negative": negative,
+            "overall": result.get("overall", "Neutral"),
+        }
+
+    except Exception as error:
+        print(f"Gemini sentiment analysis failed: {error}")
+
+        return {
+            "positive": 0,
+            "neutral": 100,
+            "negative": 0,
+            "overall": "Unavailable",
         }

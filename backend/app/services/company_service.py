@@ -4,13 +4,18 @@ from typing import Any
 import httpx
 
 from app.cache.redis_cache import redis_cache
+from app.services.ai_service import (
+    generate_investment_recommendation,
+    generate_news_sentiment,
+)
 from app.services.fmp_client import fmp_client
 from app.services.news_service import get_company_news
-from app.services.ai_service import generate_investment_recommendation
 
 
 SEARCH_CACHE_TTL = 60 * 60
 COMPANY_OVERVIEW_CACHE_TTL = 30 * 60
+AI_RECOMMENDATION_CACHE_TTL = 60 * 60
+SENTIMENT_CACHE_TTL = 60 * 60
 
 
 async def search_companies(query: str) -> list[dict[str, Any]]:
@@ -29,7 +34,6 @@ async def search_companies(query: str) -> list[dict[str, Any]]:
             return cached_results
 
     except Exception as error:
-        # Redis failure should not prevent company search from working.
         print(f"Redis search cache read failed: {error}")
 
     try:
@@ -77,11 +81,13 @@ async def get_company_overview(
         cached_overview = await redis_cache.get(cache_key)
 
         if cached_overview is not None:
-            print(f"REDIS COMPANY OVERVIEW CACHE HIT: {normalized_ticker}")
+            print(
+                f"REDIS COMPANY OVERVIEW CACHE HIT: "
+                f"{normalized_ticker}"
+            )
             return cached_overview
 
     except Exception as error:
-        # Redis being unavailable should not break the company page.
         print(f"Redis overview cache read failed: {error}")
 
     try:
@@ -148,29 +154,10 @@ async def get_company_overview(
             get_company_news(company_name),
         )
 
-        income = (
-            income_data
-            if isinstance(income_data, list)
-            else []
-        )
-
-        balance = (
-            balance_data
-            if isinstance(balance_data, list)
-            else []
-        )
-
-        cashflow = (
-            cashflow_data
-            if isinstance(cashflow_data, list)
-            else []
-        )
-
-        ratios = (
-            ratios_data
-            if isinstance(ratios_data, list)
-            else []
-        )
+        income = income_data if isinstance(income_data, list) else []
+        balance = balance_data if isinstance(balance_data, list) else []
+        cashflow = cashflow_data if isinstance(cashflow_data, list) else []
+        ratios = ratios_data if isinstance(ratios_data, list) else []
 
         latest_income = income[0] if income else {}
         latest_balance = balance[0] if balance else {}
@@ -234,8 +221,6 @@ async def get_company_overview(
         )
 
         return None
-    
-AI_RECOMMENDATION_CACHE_TTL = 60 * 60
 
 
 async def get_company_recommendation(
@@ -252,7 +237,10 @@ async def get_company_recommendation(
         cached = await redis_cache.get(cache_key)
 
         if cached is not None:
-            print(f"REDIS AI RECOMMENDATION CACHE HIT: {normalized_ticker}")
+            print(
+                f"REDIS AI RECOMMENDATION CACHE HIT: "
+                f"{normalized_ticker}"
+            )
             return cached
 
     except Exception as error:
@@ -274,9 +262,62 @@ async def get_company_recommendation(
             ttl=AI_RECOMMENDATION_CACHE_TTL,
         )
 
-        print(f"REDIS AI RECOMMENDATION STORED: {normalized_ticker}")
+        print(
+            f"REDIS AI RECOMMENDATION STORED: "
+            f"{normalized_ticker}"
+        )
 
     except Exception as error:
         print(f"Redis AI cache write failed: {error}")
 
     return recommendation
+
+
+async def get_company_sentiment(
+    ticker: str,
+) -> dict[str, Any] | None:
+    normalized_ticker = ticker.strip().upper()
+
+    if not normalized_ticker:
+        return None
+
+    cache_key = f"sentiment:{normalized_ticker}"
+
+    try:
+        cached = await redis_cache.get(cache_key)
+
+        if cached is not None:
+            print(
+                f"REDIS SENTIMENT CACHE HIT: "
+                f"{normalized_ticker}"
+            )
+            return cached
+
+    except Exception as error:
+        print(f"Redis sentiment cache read failed: {error}")
+
+    overview = await get_company_overview(normalized_ticker)
+
+    if overview is None:
+        return None
+
+    news = overview.get("news", [])
+
+    sentiment = await generate_news_sentiment(news)
+
+    try:
+        await redis_cache.set(
+            cache_key,
+            sentiment,
+            ttl=SENTIMENT_CACHE_TTL,
+        )
+
+        print(
+            f"REDIS SENTIMENT STORED: "
+            f"{normalized_ticker}"
+        )
+
+    except Exception as error:
+        print(f"Redis sentiment cache write failed: {error}")
+
+    return sentiment
