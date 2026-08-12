@@ -33,7 +33,8 @@ export function NewsSection({ news }: NewsSectionProps) {
         </p>
       </div>
 
-      <div className="space-y-4">
+      {/* Only the news articles scroll */}
+      <div className="max-h-[500px] space-y-4 overflow-y-auto pr-2">
         {news.map((item) => (
           <a
             key={item.url}

@@ -44,19 +44,6 @@ type CompanyOverviewResponse = {
   news: NewsItem[];
 };
 
-type AIRecommendation = {
-  recommendation: string;
-  confidence: number;
-  reasoning: string;
-};
-
-type SentimentResponse = {
-  positive: number;
-  neutral: number;
-  negative: number;
-  overall: string;
-};
-
 function formatCurrency(value?: number | null) {
   if (value === undefined || value === null) {
     return "N/A";
@@ -94,30 +81,16 @@ export default async function CompanyPage({
 
   const normalizedTicker = ticker.trim().toUpperCase();
 
-  const [
-    overviewResponse,
-    recommendationResponse,
-    sentimentResponse,
-  ] = await Promise.all([
-    api.get<CompanyOverviewResponse>(
+  const overviewResponse =
+    await api.get<CompanyOverviewResponse>(
       `/api/company/${normalizedTicker}/overview`
-    ),
-    api.get<AIRecommendation>(
-      `/api/company/${normalizedTicker}/recommendation`
-    ),
-    api.get<SentimentResponse>(
-      `/api/company/${normalizedTicker}/sentiment`
-    ),
-  ]);
+    );
 
   const {
     company,
     history: incomeHistory,
     news,
   } = overviewResponse.data;
-
-  const recommendation = recommendationResponse.data;
-  const sentiment = sentimentResponse.data;
 
   const calculatedPeRatio =
     company.peRatio ??
@@ -149,9 +122,7 @@ export default async function CompanyPage({
         </div>
 
         <AIRecommendationCard
-          recommendation={recommendation.recommendation}
-          confidence={recommendation.confidence}
-          reasoning={recommendation.reasoning}
+          ticker={normalizedTicker}
         />
 
         <div className="lg:col-span-2">
@@ -159,10 +130,7 @@ export default async function CompanyPage({
         </div>
 
         <SentimentCard
-          positive={sentiment.positive}
-          neutral={sentiment.neutral}
-          negative={sentiment.negative}
-          overall={sentiment.overall}
+          ticker={normalizedTicker}
         />
       </div>
 
