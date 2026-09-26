@@ -43,6 +43,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
+    from app.models.password_reset_token import PasswordResetToken  # noqa: F401
     from app.models.user import User  # noqa: F401
 
     async with engine.begin() as connection:
