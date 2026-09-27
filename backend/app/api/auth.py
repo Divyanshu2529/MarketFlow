@@ -5,8 +5,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import jwt
+from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +35,14 @@ env_path = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(env_path, override=True)
 
 APP_URL = os.getenv("APP_URL", "http://localhost:3000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", APP_URL)
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv(
+    "GOOGLE_REDIRECT_URI",
+    "http://127.0.0.1:8000/api/auth/google/callback",
+)
 
 router = APIRouter(
     prefix="/api/auth",
@@ -41,6 +51,21 @@ router = APIRouter(
 
 COOKIE_NAME = "marketflow_token"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+
+oauth = OAuth()
+
+oauth.register(
+    name="google",
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    server_metadata_url=(
+        "https://accounts.google.com/"
+        ".well-known/openid-configuration"
+    ),
+    client_kwargs={
+        "scope": "openid email profile",
+    },
+)
 
 
 def set_auth_cookie(response: Response, user_id: int) -> None:
@@ -102,9 +127,13 @@ async def login(
         select(User).where(User.email == email)
     )
 
-    if user is None or not verify_password(
-        payload.password,
-        user.password_hash,
+    if (
+        user is None
+        or user.password_hash is None
+        or not verify_password(
+            payload.password,
+            user.password_hash,
+        )
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -126,6 +155,91 @@ async def logout(response: Response):
     return {"message": "Logged out successfully"}
 
 
+@router.get("/google/login")
+async def google_login(request: Request):
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth is not configured",
+        )
+
+    return await oauth.google.authorize_redirect(
+        request,
+        GOOGLE_REDIRECT_URI,
+    )
+
+
+@router.get("/google/callback")
+async def google_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        token = await oauth.google.authorize_access_token(request)
+
+        userinfo = token.get("userinfo")
+
+        if userinfo is None:
+            userinfo = await oauth.google.userinfo(
+                token=token
+            )
+
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Google authentication failed",
+        )
+
+    google_id = userinfo.get("sub")
+    email = userinfo.get("email")
+    name = userinfo.get("name")
+
+    if not google_id or not email:
+        raise HTTPException(
+            status_code=400,
+            detail="Google account information is incomplete",
+        )
+
+    email = email.strip().lower()
+
+    user = await db.scalar(
+        select(User).where(User.google_id == google_id)
+    )
+
+    if user is None:
+        user = await db.scalar(
+            select(User).where(User.email == email)
+        )
+
+    if user is None:
+        user = User(
+            name=name or email.split("@")[0],
+            email=email,
+            password_hash=None,
+            google_id=google_id,
+        )
+
+        db.add(user)
+
+    else:
+        user.google_id = google_id
+
+        if name and not user.name:
+            user.name = name
+
+    await db.commit()
+    await db.refresh(user)
+
+    response = RedirectResponse(
+        url=f"{FRONTEND_URL}/dashboard",
+        status_code=303,
+    )
+
+    set_auth_cookie(response, user.id)
+
+    return response
+
+
 @router.post("/forgot-password")
 async def forgot_password(
     payload: PasswordResetRequest,
@@ -139,6 +253,7 @@ async def forgot_password(
 
     if user:
         raw_token = secrets.token_urlsafe(32)
+
         token_hash = hashlib.sha256(
             raw_token.encode("utf-8")
         ).hexdigest()
@@ -146,8 +261,10 @@ async def forgot_password(
         reset_token = PasswordResetToken(
             user_id=user.id,
             token_hash=token_hash,
-            expires_at=datetime.now(timezone.utc)
-            + timedelta(minutes=30),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(minutes=30)
+            ),
         )
 
         db.add(reset_token)
@@ -205,13 +322,16 @@ async def reset_password(
             detail="This password reset link is invalid",
         )
 
-    user.password_hash = hash_password(payload.new_password)
+    user.password_hash = hash_password(
+        payload.new_password
+    )
+
     reset_token.used_at = now
 
     await db.commit()
 
     return {
-        "message": "Password reset successfully"
+        "message": "Password reset successfully",
     }
 
 
@@ -230,7 +350,13 @@ async def get_current_user(
     try:
         payload = decode_access_token(token)
         user_id = int(payload["sub"])
-    except (jwt.PyJWTError, KeyError, TypeError, ValueError):
+
+    except (
+        jwt.PyJWTError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session",

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { GoogleAuthButton } from "@/components/auth/GoogleAuthButton";
 import { signup } from "@/lib/api";
 
 export default function SignupPage() {
@@ -21,12 +22,7 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
-      await signup({
-        name,
-        email,
-        password,
-      });
-
+      await signup({ name, email, password });
       router.push("/dashboard");
       router.refresh();
     } catch {
@@ -49,6 +45,14 @@ export default function SignupPage() {
           <p className="mt-2 text-sm text-slate-500">
             Start researching companies with MarketFlow.
           </p>
+        </div>
+
+        <GoogleAuthButton />
+
+        <div className="my-6 flex items-center gap-4">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-sm text-slate-500">or</span>
+          <div className="h-px flex-1 bg-slate-200" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">

@@ -48,3 +48,24 @@ async def init_db() -> None:
 
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+
+        await connection.exec_driver_sql(
+            """
+            ALTER TABLE users
+            ALTER COLUMN password_hash DROP NOT NULL
+            """
+        )
+
+        await connection.exec_driver_sql(
+            """
+            ALTER TABLE users
+            ADD COLUMN IF NOT EXISTS google_id VARCHAR(255)
+            """
+        )
+
+        await connection.exec_driver_sql(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id
+            ON users (google_id)
+            """
+        )

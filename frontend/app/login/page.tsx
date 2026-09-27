@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { GoogleAuthButton } from "@/components/auth/GoogleAuthButton";
 import { login } from "@/lib/api";
 
 export default function LoginPage() {
@@ -20,11 +21,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      await login({
-        email,
-        password,
-      });
-
+      await login({ email, password });
       router.push("/dashboard");
       router.refresh();
     } catch {
@@ -45,6 +42,14 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-slate-400">
             Log in to continue using MarketFlow.
           </p>
+        </div>
+
+        <GoogleAuthButton />
+
+        <div className="my-6 flex items-center gap-4">
+          <div className="h-px flex-1 bg-slate-700" />
+          <span className="text-sm text-slate-500">or</span>
+          <div className="h-px flex-1 bg-slate-700" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
