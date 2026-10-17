@@ -106,7 +106,15 @@ export default async function CompanyPage({
   };
 
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      assistantContext={{
+        section: "Company Research",
+        ticker: normalizedTicker,
+        company,
+        incomeHistory: incomeHistory.slice(-5),
+        calculatedPeRatio,
+      }}
+    >
       <CompanyHeader
         name={company.companyName}
         ticker={company.symbol}

@@ -217,7 +217,15 @@ export default function StocksPage() {
   const chartData = analysis?.chart.slice(-120) ?? [];
 
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      assistantContext={{
+        section: "Technical Stock Analysis",
+        ticker: analysis?.ticker ?? null,
+        quote: analysis?.quote ?? null,
+        indicators: analysis?.indicators ?? null,
+        signal: analysis?.signal ?? null,
+      }}
+    >
       <div className="space-y-8">
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-purple-600">
@@ -378,12 +386,11 @@ export default function StocksPage() {
                   </p>
 
                   <p
-                    className={`mt-2 text-sm font-medium ${
-                      (analysis.quote.changePercentage ?? 0) >=
-                      0
+                    className={`mt-2 text-sm font-medium ${(analysis.quote.changePercentage ?? 0) >=
+                        0
                         ? "text-emerald-300"
                         : "text-red-300"
-                    }`}
+                      }`}
                   >
                     {formatPercent(
                       analysis.quote.changePercentage

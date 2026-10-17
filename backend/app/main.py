@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.api.assistant import router as assistant_router
 from app.api.auth import router as auth_router
 from app.api.company import router as company_router
 from app.api.news import router as news_router
@@ -45,8 +46,9 @@ app.add_middleware(
 )
 
 
-app.include_router(company_router)
+app.include_router(assistant_router)
 app.include_router(auth_router)
+app.include_router(company_router)
 app.include_router(news_router)
 app.include_router(reports_router)
 app.include_router(stocks_router)
