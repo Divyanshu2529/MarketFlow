@@ -42,8 +42,12 @@ async def send_password_reset_email(
             headers={
                 "Authorization": f"Bearer {RESEND_API_KEY}",
                 "Content-Type": "application/json",
+                "User-Agent": "MarketFlow/1.0",
             },
             json=payload,
         )
 
-    response.raise_for_status()
+    if response.is_error:
+        raise RuntimeError(
+            f"Resend error {response.status_code}: {response.text}"
+        )

@@ -32,7 +32,8 @@ async def search_companies(
     if len(normalized_query) < 2:
         return []
 
-    cache_key = f"search:{normalized_query}"
+    # v2 bypasses old Redis results such as APLY.NE or AAPL.MX.
+    cache_key = f"search:v2:{normalized_query}"
 
     try:
         cached_results = await redis_cache.get(cache_key)
@@ -45,10 +46,15 @@ async def search_companies(
             return cached_results
 
     except Exception as error:
-        print(f"Redis search cache read failed: {error}")
+        print(
+            f"Redis search cache read failed: {error}"
+        )
 
     try:
-        print(f"FMP SEARCH REQUEST: {normalized_query}")
+        print(
+            f"FMP SEARCH REQUEST: "
+            f"{normalized_query}"
+        )
 
         data = await fmp_client.get(
             "/search-name",
@@ -57,12 +63,89 @@ async def search_companies(
             },
         )
 
-        results = data if isinstance(data, list) else []
+        raw_results = data if isinstance(data, list) else []
+
+        normalized_results: list[dict[str, Any]] = []
+
+        for item in raw_results:
+            if not isinstance(item, dict):
+                continue
+
+            symbol = (
+                item.get("symbol")
+                or item.get("ticker")
+            )
+
+            if not symbol:
+                continue
+
+            company_name = (
+                item.get("name")
+                or item.get("companyName")
+                or item.get("company")
+                or symbol
+            )
+
+            exchange = (
+                item.get("exchangeShortName")
+                or item.get("stockExchange")
+                or item.get("exchange")
+                or ""
+            )
+
+            normalized_results.append(
+                {
+                    **item,
+                    "symbol": symbol.upper(),
+                    "companyName": company_name,
+                    "exchange": exchange,
+                }
+            )
+
+        query_upper = normalized_query.upper()
+
+        def result_priority(
+            result: dict[str, Any],
+        ) -> tuple[int, int, int, int]:
+            symbol = str(
+                result.get("symbol", "")
+            ).upper()
+
+            company_name = str(
+                result.get("companyName", "")
+            ).lower()
+
+            is_exact_symbol = int(
+                symbol == query_upper
+            )
+
+            is_exact_name = int(
+                company_name == normalized_query
+            )
+
+            # Prefer U.S. symbols such as AAPL over
+            # exchange variants such as AAPL.MX.
+            is_us_symbol = int("." not in symbol)
+
+            has_exchange_suffix = int(
+                "." in symbol
+            )
+
+            return (
+                -is_exact_symbol,
+                -is_exact_name,
+                -is_us_symbol,
+                has_exchange_suffix,
+            )
+
+        normalized_results.sort(
+            key=result_priority
+        )
 
         try:
             await redis_cache.set(
                 cache_key,
-                results,
+                normalized_results,
                 ttl=SEARCH_CACHE_TTL,
             )
 
@@ -77,16 +160,17 @@ async def search_companies(
                 f"{error}"
             )
 
-        return results
+        return normalized_results
 
     except (
         httpx.HTTPStatusError,
         httpx.RequestError,
     ) as error:
-        print(f"Company search failed: {error}")
+        print(
+            f"Company search failed: {error}"
+        )
         return []
-
-
+    
 async def get_company_overview(
     ticker: str,
 ) -> dict[str, Any] | None:

@@ -26,6 +26,8 @@ from app.schemas.auth import (
     PasswordResetRequest,
     ResetPasswordRequest,
     SignupRequest,
+    UpdateEmailRequest,
+    UpdateProfileRequest,
     UserResponse,
 )
 from app.services.email_service import send_password_reset_email
@@ -34,23 +36,34 @@ from app.services.email_service import send_password_reset_email
 env_path = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(env_path, override=True)
 
-APP_URL = os.getenv("APP_URL", "http://localhost:3000")
-FRONTEND_URL = os.getenv("FRONTEND_URL", APP_URL)
+APP_URL = os.getenv(
+    "APP_URL",
+    "http://localhost:3000",
+)
+
+FRONTEND_URL = os.getenv(
+    "FRONTEND_URL",
+    APP_URL,
+)
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+
 GOOGLE_REDIRECT_URI = os.getenv(
     "GOOGLE_REDIRECT_URI",
-    "http://127.0.0.1:8000/api/auth/google/callback",
+    "http://localhost:8000/api/auth/google/callback",
 )
+
 
 router = APIRouter(
     prefix="/api/auth",
     tags=["Authentication"],
 )
 
+
 COOKIE_NAME = "marketflow_token"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+
 
 oauth = OAuth()
 
@@ -68,7 +81,10 @@ oauth.register(
 )
 
 
-def set_auth_cookie(response: Response, user_id: int) -> None:
+def set_auth_cookie(
+    response: Response,
+    user_id: int,
+) -> None:
     token = create_access_token(user_id)
 
     response.set_cookie(
@@ -82,7 +98,11 @@ def set_auth_cookie(response: Response, user_id: int) -> None:
     )
 
 
-@router.post("/signup", response_model=UserResponse, status_code=201)
+@router.post(
+    "/signup",
+    response_model=UserResponse,
+    status_code=201,
+)
 async def signup(
     payload: SignupRequest,
     response: Response,
@@ -103,7 +123,9 @@ async def signup(
     user = User(
         name=payload.name.strip(),
         email=email,
-        password_hash=hash_password(payload.password),
+        password_hash=hash_password(
+            payload.password
+        ),
     )
 
     db.add(user)
@@ -115,7 +137,10 @@ async def signup(
     return user
 
 
-@router.post("/login", response_model=UserResponse)
+@router.post(
+    "/login",
+    response_model=UserResponse,
+)
 async def login(
     payload: LoginRequest,
     response: Response,
@@ -152,7 +177,9 @@ async def logout(response: Response):
         path="/",
     )
 
-    return {"message": "Logged out successfully"}
+    return {
+        "message": "Logged out successfully",
+    }
 
 
 @router.get("/google/login")
@@ -175,7 +202,9 @@ async def google_callback(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        token = await oauth.google.authorize_access_token(request)
+        token = await oauth.google.authorize_access_token(
+            request
+        )
 
         userinfo = token.get("userinfo")
 
@@ -184,7 +213,12 @@ async def google_callback(
                 token=token
             )
 
-    except Exception:
+    except Exception as error:
+        print(
+            "GOOGLE OAUTH ERROR:",
+            repr(error),
+        )
+
         raise HTTPException(
             status_code=400,
             detail="Google authentication failed",
@@ -203,7 +237,9 @@ async def google_callback(
     email = email.strip().lower()
 
     user = await db.scalar(
-        select(User).where(User.google_id == google_id)
+        select(User).where(
+            User.google_id == google_id
+        )
     )
 
     if user is None:
@@ -224,7 +260,7 @@ async def google_callback(
     else:
         user.google_id = google_id
 
-        if name and not user.name:
+        if name:
             user.name = name
 
     await db.commit()
@@ -271,7 +307,8 @@ async def forgot_password(
         await db.commit()
 
         reset_url = (
-            f"{APP_URL}/reset-password?token={raw_token}"
+            f"{APP_URL}/reset-password"
+            f"?token={raw_token}"
         )
 
         await send_password_reset_email(
@@ -283,7 +320,7 @@ async def forgot_password(
         "message": (
             "If an account exists with that email, "
             "a password reset link has been sent."
-        )
+        ),
     }
 
 
@@ -314,7 +351,10 @@ async def reset_password(
             detail="This password reset link is invalid or expired",
         )
 
-    user = await db.get(User, reset_token.user_id)
+    user = await db.get(
+        User,
+        reset_token.user_id,
+    )
 
     if user is None:
         raise HTTPException(
@@ -373,8 +413,78 @@ async def get_current_user(
     return user
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get(
+    "/me",
+    response_model=UserResponse,
+)
 async def get_me(
     current_user: User = Depends(get_current_user),
 ):
+    return current_user
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+)
+async def update_me(
+    payload: UpdateProfileRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    current_user.name = payload.name.strip()
+
+    await db.commit()
+    await db.refresh(current_user)
+
+    return current_user
+
+
+@router.patch(
+    "/me/email",
+    response_model=UserResponse,
+)
+async def update_email(
+    payload: UpdateEmailRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.password_hash is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Google accounts must use email verification "
+                "to change their email."
+            ),
+        )
+
+    if not verify_password(
+        payload.current_password,
+        current_user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Current password is incorrect.",
+        )
+
+    new_email = payload.email.strip().lower()
+
+    existing_user = await db.scalar(
+        select(User).where(
+            User.email == new_email,
+            User.id != current_user.id,
+        )
+    )
+
+    if existing_user:
+        raise HTTPException(
+            status_code=409,
+            detail="That email is already in use.",
+        )
+
+    current_user.email = new_email
+
+    await db.commit()
+    await db.refresh(current_user)
+
     return current_user

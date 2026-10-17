@@ -10,12 +10,36 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Research", href: "/company/AAPL", icon: Search },
-  { label: "Compare", href: "/compare", icon: GitCompare },
-  { label: "Watchlist", href: "/watchlist", icon: Star },
-  { label: "Reports", href: "/reports", icon: FileText },
-  { label: "Settings", href: "/settings", icon: Settings },
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    label: "Research",
+    href: "/research",
+    icon: Search,
+  },
+  {
+    label: "Compare",
+    href: "/compare",
+    icon: GitCompare,
+  },
+  {
+    label: "Watchlist",
+    href: "/watchlist",
+    icon: Star,
+  },
+  {
+    label: "Reports",
+    href: "/reports",
+    icon: FileText,
+  },
+  {
+    label: "Settings",
+    href: "/settings",
+    icon: Settings,
+  },
 ];
 
 export function Sidebar() {
@@ -25,9 +49,15 @@ export function Sidebar() {
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-600 text-white">
           <BarChart3 size={22} />
         </div>
+
         <div>
-          <h1 className="text-lg font-bold text-slate-900">MarketFlow</h1>
-          <p className="text-xs text-slate-500">AI Equity Research</p>
+          <h1 className="text-lg font-bold text-slate-900">
+            MarketFlow
+          </h1>
+
+          <p className="text-xs text-slate-500">
+            AI Equity Research
+          </p>
         </div>
       </div>
 

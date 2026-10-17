@@ -6,6 +6,9 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.company import router as company_router
+from app.api.news import router as news_router
+from app.api.reports import router as reports_router
+from app.api.watchlist import router as watchlist_router
 from app.core.security import JWT_SECRET
 from app.db.database import init_db
 
@@ -43,6 +46,9 @@ app.add_middleware(
 
 app.include_router(company_router)
 app.include_router(auth_router)
+app.include_router(watchlist_router)
+app.include_router(news_router)
+app.include_router(reports_router)
 
 
 @app.get("/")

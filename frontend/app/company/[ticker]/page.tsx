@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { CompanyHeader } from "@/components/company/CompanyHeader";
 import { FinancialMetrics } from "@/components/company/FinancialMetrics";
+import { SaveReportButton } from "@/components/company/SaveReportButton";
 import { RevenueChart } from "@/components/charts/RevenueChart";
 import { EPSChart } from "@/components/charts/EPSChart";
 import { AIRecommendationCard } from "@/components/company/AIRecommendationCard";
@@ -78,7 +79,6 @@ export default async function CompanyPage({
   params: Promise<{ ticker: string }>;
 }) {
   const { ticker } = await params;
-
   const normalizedTicker = ticker.trim().toUpperCase();
 
   const overviewResponse =
@@ -98,6 +98,13 @@ export default async function CompanyPage({
       ? company.price / company.eps
       : 0);
 
+  const reportData: Record<string, unknown> = {
+    company,
+    history: incomeHistory,
+    news,
+    calculatedPeRatio,
+  };
+
   return (
     <DashboardLayout>
       <CompanyHeader
@@ -105,6 +112,14 @@ export default async function CompanyPage({
         ticker={company.symbol}
         exchange={company.exchange}
       />
+
+      <div className="mt-4 flex justify-end">
+        <SaveReportButton
+          ticker={normalizedTicker}
+          companyName={company.companyName}
+          reportData={reportData}
+        />
+      </div>
 
       <FinancialMetrics
         marketCap={formatCurrency(company.marketCap)}
@@ -121,17 +136,13 @@ export default async function CompanyPage({
           <RevenueChart data={incomeHistory} />
         </div>
 
-        <AIRecommendationCard
-          ticker={normalizedTicker}
-        />
+        <AIRecommendationCard ticker={normalizedTicker} />
 
         <div className="lg:col-span-2">
           <EPSChart data={incomeHistory} />
         </div>
 
-        <SentimentCard
-          ticker={normalizedTicker}
-        />
+        <SentimentCard ticker={normalizedTicker} />
       </div>
 
       <div className="mt-8">
