@@ -1,5 +1,4 @@
 "use client";
-import ReactMarkdown from "react-markdown";
 
 import {
   FormEvent,
@@ -8,6 +7,7 @@ import {
   useState,
 } from "react";
 import { usePathname } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 import {
   Bot,
   Send,
@@ -170,47 +170,109 @@ export function AIAssistant({
           </header>
 
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            {messages.map((message, index) => (
-              <div
-                key={`${message.role}-${index}`}
-                className={`flex ${message.role === "user"
-                  ? "justify-end"
-                  : "justify-start"
-                  }`}
-              >
+            {messages.map((message, index) => {
+              const isUser = message.role === "user";
+
+              return (
                 <div
-                  className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user"
-                    ? "rounded-br-md bg-purple-600 text-white"
-                    : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                    }`}
+                  key={`${message.role}-${index}`}
+                  className={`flex ${
+                    isUser
+                      ? "justify-end"
+                      : "justify-start"
+                  }`}
                 >
-                  <ReactMarkdown
-                    components={{
-                      p: ({ children }) => (
-                        <p className="mb-2 last:mb-0">{children}</p>
-                      ),
-                      ul: ({ children }) => (
-                        <ul className="mb-2 list-disc space-y-1 pl-5">
-                          {children}
-                        </ul>
-                      ),
-                      ol: ({ children }) => (
-                        <ol className="mb-2 list-decimal space-y-1 pl-5">
-                          {children}
-                        </ol>
-                      ),
-                      strong: ({ children }) => (
-                        <strong className="font-semibold">
-                          {children}
-                        </strong>
-                      ),
-                    }}
+                  <div
+                    className={`max-w-[85%] break-words overflow-hidden rounded-2xl px-4 py-3 text-sm leading-6 ${
+                      isUser
+                        ? "rounded-br-md bg-purple-600 text-white"
+                        : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    }`}
                   >
-                    {message.content}
-                  </ReactMarkdown>
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => (
+                          <p className="mb-2 last:mb-0">
+                            {children}
+                          </p>
+                        ),
+
+                        h1: ({ children }) => (
+                          <h1 className="mb-2 mt-2 text-base font-bold">
+                            {children}
+                          </h1>
+                        ),
+
+                        h2: ({ children }) => (
+                          <h2 className="mb-2 mt-3 text-base font-bold">
+                            {children}
+                          </h2>
+                        ),
+
+                        h3: ({ children }) => (
+                          <h3 className="mb-2 mt-3 font-semibold">
+                            {children}
+                          </h3>
+                        ),
+
+                        ul: ({ children }) => (
+                          <ul className="mb-2 list-disc space-y-1 pl-5">
+                            {children}
+                          </ul>
+                        ),
+
+                        ol: ({ children }) => (
+                          <ol className="mb-2 list-decimal space-y-1 pl-5">
+                            {children}
+                          </ol>
+                        ),
+
+                        li: ({ children }) => (
+                          <li className="break-words">
+                            {children}
+                          </li>
+                        ),
+
+                        strong: ({ children }) => (
+                          <strong className="font-semibold">
+                            {children}
+                          </strong>
+                        ),
+
+                        a: ({ children, href }) => (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`break-all underline ${
+                              isUser
+                                ? "text-purple-200"
+                                : "text-purple-600 dark:text-purple-400"
+                            }`}
+                          >
+                            {children}
+                          </a>
+                        ),
+
+                        blockquote: ({ children }) => (
+                          <blockquote className="my-2 border-l-2 border-purple-400 pl-3 italic">
+                            {children}
+                          </blockquote>
+                        ),
+
+                        code: ({ children }) => (
+                          <code className="rounded bg-slate-200 px-1 py-0.5 text-xs dark:bg-slate-700">
+                            {children}
+                          </code>
+                        ),
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {isSending && (
               <div className="flex justify-start">

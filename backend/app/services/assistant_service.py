@@ -8,8 +8,14 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
 from app.schemas.assistant import AssistantChatRequest
+from app.services.assistant_tools import (
+    ASSISTANT_TOOLS,
+    execute_assistant_tool,
+)
 
 
 env_path = Path(__file__).resolve().parents[2] / ".env"
@@ -45,6 +51,241 @@ def _safe_json(
     return text[:max_chars]
 
 
+def _shorten_text(
+    value: Any,
+    max_chars: int = 350,
+) -> str:
+    text = " ".join(str(value or "").split())
+
+    if len(text) > max_chars:
+        return text[:max_chars].rstrip() + "..."
+
+    return text
+
+
+def _extract_records(
+    value: Any,
+    possible_keys: tuple[str, ...],
+) -> list[Any]:
+    if isinstance(value, list):
+        return value
+
+    if isinstance(value, dict):
+        for key in possible_keys:
+            records = value.get(key)
+
+            if isinstance(records, list):
+                return records
+
+        return [value]
+
+    return []
+
+
+def _compact_news(
+    value: Any,
+) -> list[dict[str, Any]]:
+    records = _extract_records(
+        value,
+        (
+            "articles",
+            "news",
+            "results",
+        ),
+    )
+
+    compact_articles = []
+
+    for record in records[:5]:
+        if not isinstance(record, dict):
+            continue
+
+        source = record.get("publisher") or record.get(
+            "source"
+        )
+
+        if isinstance(source, dict):
+            source = source.get("name")
+
+        article: dict[str, Any] = {}
+
+        title = record.get("title")
+
+        if title:
+            article["title"] = _shorten_text(
+                title,
+                220,
+            )
+
+        if source:
+            article["publisher"] = str(source)
+
+        published_date = (
+            record.get("publishedDate")
+            or record.get("publishedAt")
+            or record.get("date")
+        )
+
+        if published_date:
+            article["publishedDate"] = str(
+                published_date
+            )[:30]
+
+        summary = (
+            record.get("summary")
+            or record.get("description")
+            or record.get("content")
+        )
+
+        if summary:
+            article["summary"] = _shorten_text(
+                summary,
+                350,
+            )
+
+        url = record.get("url") or record.get("link")
+
+        if url:
+            article["url"] = str(url)
+
+        if article:
+            compact_articles.append(article)
+
+    return compact_articles
+
+
+def _compact_filings(
+    value: Any,
+) -> list[dict[str, Any]]:
+    records = _extract_records(
+        value,
+        (
+            "filings",
+            "results",
+            "data",
+        ),
+    )
+
+    compact_filings = []
+
+    for record in records[:5]:
+        if not isinstance(record, dict):
+            continue
+
+        filing: dict[str, Any] = {}
+
+        form = (
+            record.get("form")
+            or record.get("formType")
+            or record.get("filingType")
+            or record.get("type")
+        )
+
+        if form:
+            filing["form"] = str(form)
+
+        filing_date = (
+            record.get("filingDate")
+            or record.get("filedDate")
+            or record.get("date")
+        )
+
+        if filing_date:
+            filing["filingDate"] = str(
+                filing_date
+            )[:30]
+
+        summary = (
+            record.get("summary")
+            or record.get("description")
+            or record.get("title")
+        )
+
+        if summary:
+            filing["summary"] = _shorten_text(
+                summary,
+                400,
+            )
+
+        link = (
+            record.get("link")
+            or record.get("url")
+            or record.get("filingUrl")
+            or record.get("finalLink")
+        )
+
+        if link:
+            filing["link"] = str(link)
+
+        if filing:
+            compact_filings.append(filing)
+
+    return compact_filings
+
+
+def _compact_tool_result(
+    tool_name: str,
+    result: Any,
+) -> Any:
+    if tool_name == "get_company_news":
+        return {
+            "articles": _compact_news(result)
+        }
+
+    if tool_name == "get_company_filings":
+        return {
+            "filings": _compact_filings(result)
+        }
+
+    if tool_name == "get_company_overview":
+        if not isinstance(result, dict):
+            return result
+
+        compact_result = dict(result)
+
+        if "news" in compact_result:
+            compact_result["news"] = _compact_news(
+                compact_result["news"]
+            )
+
+        if isinstance(
+            compact_result.get("history"),
+            list,
+        ):
+            compact_result["history"] = (
+                compact_result["history"][-5:]
+            )
+
+        return compact_result
+
+    if tool_name == "get_company_competitors":
+        if isinstance(result, list):
+            return result[:8]
+
+        return result
+
+    if tool_name == "get_stock_analysis":
+        if not isinstance(result, dict):
+            return result
+
+        compact_result = dict(result)
+
+        for key in (
+            "priceHistory",
+            "price_history",
+            "history",
+        ):
+            history = compact_result.get(key)
+
+            if isinstance(history, list):
+                compact_result[key] = history[-30:]
+                break
+
+        return compact_result
+
+    return result
+
+
 def _get_company_details(
     context: dict[str, Any],
 ) -> tuple[str, str]:
@@ -76,7 +317,7 @@ def _get_company_details(
 def _needs_news(message: str) -> bool:
     message_lower = message.lower()
 
-    news_keywords = (
+    keywords = (
         "news",
         "latest",
         "recent",
@@ -96,57 +337,33 @@ def _needs_news(message: str) -> bool:
 
     return any(
         keyword in message_lower
-        for keyword in news_keywords
+        for keyword in keywords
     )
 
 
-async def _get_related_news(
+def _news_query(
     message: str,
     context: dict[str, Any],
-) -> list[dict[str, Any]]:
-    if not _needs_news(message):
-        return []
-
+) -> str:
     company_name, ticker = _get_company_details(context)
     message_lower = message.lower()
 
     if "iphone" in message_lower:
-        search_query = (
-            f"{company_name or 'Apple'} iPhone"
-        )
-    elif company_name:
-        search_query = company_name
-    elif ticker:
-        search_query = ticker
-    else:
-        search_query = message
+        return f"{company_name or 'Apple'} iPhone"
 
-    try:
-        from app.services.news_service import (
-            get_company_news,
-        )
+    if company_name:
+        return company_name
 
-        articles = await get_company_news(
-            search_query[:200]
-        )
+    if ticker:
+        return ticker
 
-        return [
-            article
-            for article in articles[:6]
-            if isinstance(article, dict)
-        ]
-
-    except Exception:
-        logger.exception(
-            "Unable to load news for assistant"
-        )
-        return []
+    return message
 
 
 def _is_summary_question(message: str) -> bool:
     message_lower = message.lower()
 
-    summary_phrases = (
+    phrases = (
         "summarize",
         "summary",
         "on screen",
@@ -160,11 +377,11 @@ def _is_summary_question(message: str) -> bool:
 
     return any(
         phrase in message_lower
-        for phrase in summary_phrases
+        for phrase in phrases
     )
 
 
-def _format_fallback_value(value: Any) -> str:
+def _format_value(value: Any) -> str:
     if value is None:
         return "N/A"
 
@@ -180,16 +397,296 @@ def _format_fallback_value(value: Any) -> str:
     return str(value)
 
 
+def _build_prompt(
+    request: AssistantChatRequest,
+) -> str:
+    context_json = _safe_json(
+        request.context or {},
+        max_chars=14000,
+    )
+
+    history_text = "\n".join(
+        f"{message.role}: {message.content}"
+        for message in request.history[-10:]
+    )
+
+    return f"""
+You are the MarketFlow AI Assistant.
+
+MarketFlow is an equity research platform that helps users
+understand company financials, stock analysis, market news,
+company comparisons, watchlists, SEC filings, and reports.
+
+Answer the user's question directly and clearly.
+
+Tool rules:
+
+1. Use search_companies when the user gives a company name
+   instead of a ticker symbol.
+
+2. Use get_company_overview for financial metrics and company
+   information.
+
+3. Use get_stock_analysis for price trends, RSI, moving averages,
+   momentum, volatility, and BUY/HOLD/AVOID signals.
+
+4. Use get_company_news for current news, product launches,
+   announcements, releases, and company updates.
+
+5. Use compare_companies when the user asks to compare companies.
+
+6. Use SEC filing, recommendation, sentiment, and competitor tools
+   when those topics are requested.
+
+7. You may answer general educational finance questions using your
+   general knowledge.
+
+8. Never invent prices, financial metrics, news, release dates,
+   or company facts.
+
+9. If a tool returns an error, explain that the requested live data
+   could not be retrieved instead of making up an answer.
+
+10. Do not provide guaranteed investment advice. Explain risks and
+    encourage independent research.
+
+Formatting rules:
+
+11. Never display raw JSON, Python dictionaries, or API objects.
+
+12. Never show a naked URL. Always use a Markdown link, such as:
+    [View filing](https://example.com).
+
+13. For SEC filings, show no more than five filings. Format each one
+    like this:
+
+    ### Form 8-K — Filed July 30, 2026
+    One short sentence explaining what the filing contains.
+    [View filing](URL)
+
+14. For news, show only the title, publisher, date, and a short
+    explanation. Do not copy the full article.
+
+15. For financial metrics, use a compact table or short bullet list.
+    Format currency, percentages, and ratios clearly.
+
+16. Keep normal responses under 250 words unless the user asks
+    for a detailed explanation.
+
+17. Use simple headings and compact bullet points. Do not create
+    deeply nested lists or empty bullet points.
+
+18. Do not repeat the same information multiple times.
+
+Current page context:
+{context_json}
+
+Previous conversation:
+{history_text or "No previous conversation."}
+
+User question:
+{request.message}
+""".strip()
+
+
+def _build_contents(
+    request: AssistantChatRequest,
+    prompt: str,
+) -> list[types.Content]:
+    contents: list[types.Content] = []
+
+    history = list(request.history[-10:])
+
+    if history:
+        last_message = history[-1]
+
+        if (
+            last_message.role == "user"
+            and last_message.content.strip()
+            == request.message.strip()
+        ):
+            history = history[:-1]
+
+    for message in history:
+        role = (
+            "model"
+            if message.role == "assistant"
+            else "user"
+        )
+
+        contents.append(
+            types.Content(
+                role=role,
+                parts=[
+                    types.Part(
+                        text=message.content
+                    )
+                ],
+            )
+        )
+
+    contents.append(
+        types.Content(
+            role="user",
+            parts=[
+                types.Part(text=prompt)
+            ],
+        )
+    )
+
+    return contents
+
+
+async def _run_gemini_with_tools(
+    request: AssistantChatRequest,
+) -> str:
+    if not GEMINI_API_KEY:
+        raise AssistantUnavailable(
+            "GEMINI_API_KEY is not configured."
+        )
+
+    client = genai.Client(
+        api_key=GEMINI_API_KEY
+    )
+
+    prompt = _build_prompt(request)
+    contents = _build_contents(request, prompt)
+
+    config = types.GenerateContentConfig(
+        tools=ASSISTANT_TOOLS,
+        temperature=0.2,
+    )
+
+    for _ in range(4):
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=config,
+        )
+
+        function_calls = (
+            getattr(response, "function_calls", None)
+            or []
+        )
+
+        if not function_calls:
+            answer = getattr(response, "text", None)
+
+            if not answer or not answer.strip():
+                raise AssistantUnavailable(
+                    "The AI service returned an empty response."
+                )
+
+            return answer.strip()
+
+        if not response.candidates:
+            raise AssistantUnavailable(
+                "The AI service returned no candidates."
+            )
+
+        model_content = response.candidates[0].content
+
+        if model_content is not None:
+            contents.append(model_content)
+
+        function_response_parts = []
+
+        for function_call in function_calls:
+            function_name = getattr(
+                function_call,
+                "name",
+                "",
+            )
+
+            function_arguments = getattr(
+                function_call,
+                "args",
+                {},
+            ) or {}
+
+            raw_result = await execute_assistant_tool(
+                function_name,
+                dict(function_arguments),
+            )
+
+            compact_result = _compact_tool_result(
+                function_name,
+                raw_result,
+            )
+
+            response_kwargs: dict[str, Any] = {
+                "name": function_name,
+                "response": {
+                    "result": compact_result,
+                },
+            }
+
+            function_call_id = getattr(
+                function_call,
+                "id",
+                None,
+            )
+
+            if function_call_id:
+                response_kwargs["id"] = function_call_id
+
+            function_response_parts.append(
+                types.Part.from_function_response(
+                    **response_kwargs
+                )
+            )
+
+        contents.append(
+            types.Content(
+                role="user",
+                parts=function_response_parts,
+            )
+        )
+
+    raise AssistantUnavailable(
+        "The assistant used too many tool calls."
+    )
+
+
+async def _get_fallback_news(
+    request: AssistantChatRequest,
+) -> list[dict[str, Any]]:
+    if not _needs_news(request.message):
+        return []
+
+    query = _news_query(
+        request.message,
+        request.context or {},
+    )
+
+    result = await execute_assistant_tool(
+        "get_company_news",
+        {
+            "company_name": query,
+        },
+    )
+
+    if isinstance(result, list):
+        return [
+            article
+            for article in result[:5]
+            if isinstance(article, dict)
+        ]
+
+    return []
+
+
 def _build_fallback_answer(
     request: AssistantChatRequest,
-    context: dict[str, Any],
     related_news: list[dict[str, Any]],
 ) -> str:
+    context = request.context or {}
     company_name, ticker = _get_company_details(context)
 
     if _is_summary_question(request.message):
         lines = [
-            "Here is a summary of the data currently shown:"
+            "### Screen Summary",
         ]
 
         if company_name or ticker:
@@ -198,7 +695,9 @@ def _build_fallback_answer(
             if ticker:
                 company_label += f" ({ticker})"
 
-            lines.append(f"- Company: {company_label}")
+            lines.append(
+                f"- **Company:** {company_label}"
+            )
 
         company = context.get("company")
 
@@ -220,8 +719,8 @@ def _build_fallback_answer(
 
                 if value is not None:
                     lines.append(
-                        f"- {label}: "
-                        f"{_format_fallback_value(value)}"
+                        f"- **{label}:** "
+                        f"{_format_value(value)}"
                     )
 
         calculated_pe = context.get(
@@ -230,231 +729,64 @@ def _build_fallback_answer(
 
         if calculated_pe is not None:
             lines.append(
-                "- Calculated P/E Ratio: "
-                f"{_format_fallback_value(calculated_pe)}"
+                "- **Calculated P/E Ratio:** "
+                f"{_format_value(calculated_pe)}"
             )
-
-        history = context.get("incomeHistory")
-
-        if isinstance(history, list) and history:
-            history_items = []
-
-            for item in history[-5:]:
-                if not isinstance(item, dict):
-                    continue
-
-                year = item.get("year", "Year")
-                revenue = item.get("revenue")
-
-                if revenue is not None:
-                    history_items.append(
-                        f"{year}: {revenue}"
-                    )
-
-            if history_items:
-                lines.append(
-                    "- Revenue history: "
-                    + ", ".join(history_items)
-                )
 
         signal = context.get("signal")
 
         if isinstance(signal, dict):
-            signal_label = (
+            signal_value = (
                 signal.get("label")
                 or signal.get("action")
                 or signal.get("signal")
             )
 
-            if signal_label:
+            if signal_value:
                 lines.append(
-                    f"- Stock signal: {signal_label}"
+                    f"- **Stock Signal:** {signal_value}"
                 )
-
-        if len(lines) == 1:
-            lines.append(
-                "- Detailed page data was not available "
-                "in the assistant context."
-            )
 
         return "\n".join(lines)
 
     if related_news:
         lines = [
-            "I could not reach the AI service, "
-            "but I found these recent related headlines:"
+            "### Recent Related News",
         ]
 
         for article in related_news:
             title = article.get("title")
 
-            if not title:
-                continue
-
-            publisher = article.get("publisher")
-            published_date = article.get(
-                "publishedDate"
-            )
-
-            details = []
-
-            if publisher:
-                details.append(str(publisher))
-
-            if published_date:
-                details.append(str(published_date)[:10])
-
-            suffix = (
-                f" ({', '.join(details)})"
-                if details
-                else ""
-            )
-
-            lines.append(f"- {title}{suffix}")
+            if title:
+                lines.append(
+                    f"- **{title}**"
+                )
 
         return "\n".join(lines)
 
     return (
-        "I could not connect to the AI service right now. "
+        "The assistant is temporarily unavailable. "
         "Please try again in a moment."
     )
-
-
-def _build_prompt(
-    request: AssistantChatRequest,
-    related_news: list[dict[str, Any]],
-) -> str:
-    context_json = _safe_json(request.context)
-
-    news_json = (
-        _safe_json(related_news, max_chars=9000)
-        if related_news
-        else "No related live news was retrieved."
-    )
-
-    history_text = "\n".join(
-        f"{message.role}: {message.content}"
-        for message in request.history[-10:]
-    )
-
-    return f"""
-You are the MarketFlow AI Assistant.
-
-MarketFlow is an equity research platform that helps users
-understand company financials, stock analysis, market news,
-comparisons, watchlists, and reports.
-
-Answer the user's question directly and clearly.
-
-Important rules:
-
-1. If the question asks about the current page or screen,
-   summarize the supplied page context.
-
-2. You may answer general educational questions about finance,
-   companies, stocks, products, and markets using your general
-   knowledge.
-
-3. For current news, product releases, announcements, or recent
-   updates, use the related news data when available.
-
-4. Never invent financial values, news headlines, prices,
-   release dates, or company facts.
-
-5. If live information is unavailable, clearly say that the
-   live information could not be verified, but still provide
-   useful general context instead of only saying that the data
-   is unavailable.
-
-6. Do not provide guaranteed investment advice. Explain that
-   buy, sell, or hold decisions require independent research.
-
-7. Keep the answer concise but complete. Use bullet points when
-   they make the explanation easier to read.
-
-Current page context:
-{context_json}
-
-Related live news:
-{news_json}
-
-Previous conversation:
-{history_text or "No previous conversation."}
-
-User question:
-{request.message}
-""".strip()
-
-
-async def _generate_with_gemini(
-    prompt: str,
-) -> str:
-    if not GEMINI_API_KEY:
-        raise AssistantUnavailable(
-            "GEMINI_API_KEY is not configured."
-        )
-
-    try:
-        from google import genai
-
-        client = genai.Client(
-            api_key=GEMINI_API_KEY
-        )
-
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=GEMINI_MODEL,
-            contents=prompt,
-        )
-
-        answer = getattr(response, "text", None)
-
-        if not answer or not answer.strip():
-            raise AssistantUnavailable(
-                "The AI service returned an empty response."
-            )
-
-        return answer.strip()
-
-    except AssistantUnavailable:
-        raise
-
-    except Exception as error:
-        logger.exception(
-            "Gemini assistant request failed: %s",
-            error,
-        )
-
-        raise AssistantUnavailable(
-            "The AI service is temporarily unavailable."
-        ) from error
 
 
 async def generate_assistant_answer(
     request: AssistantChatRequest,
 ) -> str:
-    context = request.context or {}
-
-    related_news = await _get_related_news(
-        request.message,
-        context,
-    )
-
-    prompt = _build_prompt(
-        request,
-        related_news,
-    )
-
     try:
-        return await _generate_with_gemini(prompt)
+        return await _run_gemini_with_tools(request)
 
-    except AssistantUnavailable:
-        logger.warning(
-            "Using fallback assistant response."
+    except Exception as error:
+        logger.exception(
+            "Assistant request failed: %s",
+            error,
+        )
+
+        related_news = await _get_fallback_news(
+            request
         )
 
         return _build_fallback_answer(
             request,
-            context,
             related_news,
         )
