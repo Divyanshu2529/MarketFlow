@@ -98,7 +98,7 @@ async function resolveTicker(input: string): Promise<string> {
 }
 
 export default function ComparePage() {
-  const [tickers, setTickers] = useState(["AAPL", "MSFT"]);
+  const [tickers, setTickers] = useState(["", ""]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");

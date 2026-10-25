@@ -1,4 +1,5 @@
 "use client";
+import ReactMarkdown from "react-markdown";
 
 import {
   FormEvent,
@@ -173,17 +174,40 @@ export function AIAssistant({
               <div
                 key={`${message.role}-${index}`}
                 className={`flex ${message.role === "user"
-                    ? "justify-end"
-                    : "justify-start"
+                  ? "justify-end"
+                  : "justify-start"
                   }`}
               >
                 <div
                   className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user"
-                      ? "rounded-br-md bg-purple-600 text-white"
-                      : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    ? "rounded-br-md bg-purple-600 text-white"
+                    : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
                     }`}
                 >
-                  {message.content}
+                  <ReactMarkdown
+                    components={{
+                      p: ({ children }) => (
+                        <p className="mb-2 last:mb-0">{children}</p>
+                      ),
+                      ul: ({ children }) => (
+                        <ul className="mb-2 list-disc space-y-1 pl-5">
+                          {children}
+                        </ul>
+                      ),
+                      ol: ({ children }) => (
+                        <ol className="mb-2 list-decimal space-y-1 pl-5">
+                          {children}
+                        </ol>
+                      ),
+                      strong: ({ children }) => (
+                        <strong className="font-semibold">
+                          {children}
+                        </strong>
+                      ),
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
                 </div>
               </div>
             ))}
