@@ -3,7 +3,33 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 
 export default function DashboardPage() {
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      assistantContext={{
+        currentPage: "/dashboard",
+        pageTitle: "MarketFlow Dashboard",
+        section: "Personalized Market News",
+
+        availableSections: [
+          "Personalized financial news",
+          "Company updates",
+          "Market updates",
+          "Stock-related news",
+          "Search and research",
+        ],
+
+        availableActions: [
+          "Explain a news article",
+          "Summarize market news",
+          "Find more news about a company",
+          "Explain how news may affect a stock",
+          "Open company research",
+          "Analyze a stock",
+        ],
+
+        assistantInstructions:
+          "The dashboard contains a personalized financial news feed based on the user's interests and searched companies. Use live news tools when the user asks about current events, recent headlines, or a specific company. Never invent news.",
+      }}
+    >
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">

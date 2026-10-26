@@ -183,7 +183,50 @@ export default function ComparePage() {
   }
 
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      assistantContext={{
+        currentPage: "/compare",
+        pageTitle: "Compare Companies",
+        section: "Company Comparison",
+
+        comparisonLoaded: companies.length > 0,
+        comparisonCount: companies.length,
+
+        searchInputs: tickers
+          .map((ticker) => ticker.trim())
+          .filter(Boolean),
+
+        resolvedTickers: companies.map(
+          (company) => company.symbol
+        ),
+
+        companies,
+
+        comparisonMetrics: [
+          "Exchange",
+          "Price",
+          "Market Cap",
+          "Revenue",
+          "P/E Ratio",
+          "EPS",
+          "Profit Margin",
+          "Debt",
+          "Cash Flow",
+        ],
+
+        availableActions: [
+          "Compare two or more companies",
+          "Search using company names",
+          "Search using ticker symbols",
+          "Compare financial metrics",
+          "Compare profitability",
+          "Compare debt and cash flow",
+        ],
+
+        assistantInstructions:
+          "Answer comparison questions using the companies and metrics shown on this page. Use live tools when the user requests updated data or compares companies not currently displayed. Do not invent missing metrics.",
+      }}
+    >
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">

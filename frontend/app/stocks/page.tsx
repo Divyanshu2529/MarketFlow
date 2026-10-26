@@ -219,11 +219,42 @@ export default function StocksPage() {
   return (
     <DashboardLayout
       assistantContext={{
+        currentPage: "/stocks",
+        pageTitle: "Technical Stock Analysis",
         section: "Technical Stock Analysis",
+
         ticker: analysis?.ticker ?? null,
+        companyName: analysis?.quote?.name ?? null,
+        exchange: analysis?.quote?.exchange ?? null,
+
+        analysisLoaded: Boolean(analysis),
+        searchQuery: query,
+
         quote: analysis?.quote ?? null,
         indicators: analysis?.indicators ?? null,
         signal: analysis?.signal ?? null,
+
+        recentChartData: chartData.slice(-30),
+
+        availableSections: [
+          "Current stock price",
+          "Daily price change",
+          "Day range",
+          "52-week range",
+          "Trading volume",
+          "Market capitalization",
+          "RSI",
+          "Moving averages",
+          "Momentum",
+          "Volatility",
+          "Entry timing signal",
+          "Exit-risk signal",
+          "BUY, HOLD, or AVOID signal",
+          "Signal reasons",
+        ],
+
+        assistantInstructions:
+          "Answer questions using the technical stock analysis shown on this page. Use live tools for current prices, updated technical indicators, and the latest stock analysis. Explain that signals are educational and not guaranteed financial advice.",
       }}
     >
       <div className="space-y-8">
@@ -386,11 +417,11 @@ export default function StocksPage() {
                   </p>
 
                   <p
-                    className={`mt-2 text-sm font-medium ${(analysis.quote.changePercentage ?? 0) >=
-                        0
+                    className={`mt-2 text-sm font-medium ${
+                      (analysis.quote.changePercentage ?? 0) >= 0
                         ? "text-emerald-300"
                         : "text-red-300"
-                      }`}
+                    }`}
                   >
                     {formatPercent(
                       analysis.quote.changePercentage
@@ -557,10 +588,12 @@ export default function StocksPage() {
                     color="bg-purple-600"
                     label="Close"
                   />
+
                   <LegendDot
                     color="bg-amber-500"
                     label="SMA 20"
                   />
+
                   <LegendDot
                     color="bg-teal-700"
                     label="SMA 50"
@@ -779,6 +812,7 @@ function MetricCard({
   return (
     <div className="rounded-2xl border bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
+
       <p className="mt-2 text-lg font-bold text-slate-900">
         {value}
       </p>

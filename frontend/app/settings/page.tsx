@@ -180,7 +180,41 @@ export default function SettingsPage() {
     : "text-slate-500";
 
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      assistantContext={{
+        currentPage: "/settings",
+        pageTitle: "Account Settings",
+        section: "Account and Security Settings",
+
+        accountLoaded: !isLoading,
+
+        account: {
+          name,
+          email,
+        },
+
+        currentTheme: theme,
+
+        availableSections: [
+          "Profile",
+          "Email address",
+          "Password reset",
+          "Appearance",
+          "Account logout",
+        ],
+
+        availableActions: [
+          "Update name",
+          "Change email",
+          "Reset password",
+          "Change light or dark mode",
+          "Log out",
+        ],
+
+        assistantInstructions:
+          "Explain the account and security options shown on this page. Never request, display, or store the user's current password. Do not expose sensitive authentication information.",
+      }}
+    >
       <div
         className={`mx-auto min-h-screen max-w-3xl space-y-8 p-1 ${
           isDark ? "text-white" : "text-slate-900"

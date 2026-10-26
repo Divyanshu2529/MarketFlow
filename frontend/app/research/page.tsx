@@ -24,7 +24,22 @@ const featuredCompanies = [
 
 export default function ResearchPage() {
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      assistantContext={{
+        currentPage: "/research",
+        pageTitle: "Company Research",
+        pagePurpose:
+          "Search for companies and open detailed financial research.",
+        availableActions: [
+          "Search by company name or ticker",
+          "View financial metrics",
+          "Read company news",
+          "Analyze stock performance",
+          "Compare companies",
+        ],
+        featuredCompanies,
+      }}
+    >
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">

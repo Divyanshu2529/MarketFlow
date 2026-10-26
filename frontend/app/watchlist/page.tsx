@@ -72,7 +72,9 @@ export default function WatchlistPage() {
     loadWatchlist();
   }, []);
 
-  async function handleAdd(event: FormEvent<HTMLFormElement>) {
+  async function handleAdd(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     const input = ticker.trim();
@@ -124,7 +126,32 @@ export default function WatchlistPage() {
   }
 
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      assistantContext={{
+        currentPage: "/watchlist",
+        pageTitle: "Personal Watchlist",
+        section: "User Watchlist",
+
+        watchlistLoaded: !isLoading,
+        watchlistCount: watchlist.length,
+        watchlist,
+
+        trackedTickers: watchlist.map(
+          (item) => item.ticker
+        ),
+
+        availableActions: [
+          "View tracked companies",
+          "Add a company by name",
+          "Add a company by ticker",
+          "Remove a company",
+          "Open company research",
+        ],
+
+        assistantInstructions:
+          "Answer questions about the authenticated user's watchlist using the watchlist data shown on this page. Use the get_my_watchlist tool when the user asks for updated watchlist information. Do not expose another user's data.",
+      }}
+    >
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">

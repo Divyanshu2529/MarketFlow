@@ -108,11 +108,46 @@ export default async function CompanyPage({
   return (
     <DashboardLayout
       assistantContext={{
+        currentPage: `/company/${normalizedTicker}`,
+        pageTitle: `${company.companyName} Research`,
         section: "Company Research",
+
         ticker: normalizedTicker,
+        companyName: company.companyName,
+        exchange: company.exchange,
+
         company,
+
+        visibleMetrics: {
+          price: company.price,
+          marketCap: company.marketCap,
+          revenue: company.revenue,
+          peRatio: company.peRatio,
+          calculatedPeRatio,
+          eps: company.eps,
+          profitMargin: company.profitMargin,
+          debt: company.debt,
+          cashFlow: company.cashFlow,
+        },
+
         incomeHistory: incomeHistory.slice(-5),
-        calculatedPeRatio,
+
+        recentNews: news.slice(0, 5),
+
+        availableSections: [
+          "Company overview",
+          "Financial metrics",
+          "Revenue history",
+          "EPS history",
+          "AI recommendation",
+          "Sentiment analysis",
+          "Company news",
+          "SEC filings",
+          "Competitor comparison",
+        ],
+
+        assistantInstructions:
+          "Answer questions using the company data shown on this page. Use live tools for current prices, latest news, stock analysis, sentiment, filings, or recommendations.",
       }}
     >
       <CompanyHeader

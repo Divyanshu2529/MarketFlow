@@ -86,8 +86,44 @@ export default function ReportsPage() {
     }
   }
 
+  const reportSummaries = reports.map((report) => ({
+    id: report.id,
+    ticker: report.ticker,
+    companyName: report.company_name,
+    title: report.title,
+    reportType: report.report_type,
+    createdAt: report.created_at,
+  }));
+
   return (
-    <DashboardLayout>
+    <DashboardLayout
+      assistantContext={{
+        currentPage: "/reports",
+        pageTitle: "Research Reports",
+        section: "Saved Research Reports",
+
+        reportsLoaded: !isLoading,
+        reportCount: reports.length,
+        savedReports: reportSummaries,
+
+        availableFormats: [
+          "PDF document",
+          "Word document",
+          "JSON data",
+        ],
+
+        availableActions: [
+          "List saved reports",
+          "Summarize a saved report",
+          "Analyze a saved report",
+          "Download a report",
+          "Delete a report",
+        ],
+
+        assistantInstructions:
+          "Answer questions about the authenticated user's saved reports. Use get_my_saved_reports to list reports and get_saved_report to analyze a specific report. Do not expose another user's reports or invent report contents.",
+      }}
+    >
       <div className="space-y-8">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
           <div>
