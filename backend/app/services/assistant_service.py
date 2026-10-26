@@ -10,11 +10,15 @@ from typing import Any
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.assistant import AssistantChatRequest
 from app.services.assistant_tools import (
     ASSISTANT_TOOLS,
     execute_assistant_tool,
+)
+from app.services.openai_service import (
+    generate_openai_fallback_answer,
 )
 
 
@@ -34,6 +38,23 @@ class AssistantUnavailable(Exception):
     pass
 
 
+def _is_gemini_quota_error(error: Exception) -> bool:
+    error_text = str(error).lower()
+
+    quota_markers = (
+        "resource_exhausted",
+        "quota",
+        "rate limit",
+        "rate_limit",
+        "429",
+    )
+
+    return any(
+        marker in error_text
+        for marker in quota_markers
+    )
+
+
 def _safe_json(
     value: Any,
     max_chars: int = 14000,
@@ -49,241 +70,6 @@ def _safe_json(
         text = str(value)
 
     return text[:max_chars]
-
-
-def _shorten_text(
-    value: Any,
-    max_chars: int = 350,
-) -> str:
-    text = " ".join(str(value or "").split())
-
-    if len(text) > max_chars:
-        return text[:max_chars].rstrip() + "..."
-
-    return text
-
-
-def _extract_records(
-    value: Any,
-    possible_keys: tuple[str, ...],
-) -> list[Any]:
-    if isinstance(value, list):
-        return value
-
-    if isinstance(value, dict):
-        for key in possible_keys:
-            records = value.get(key)
-
-            if isinstance(records, list):
-                return records
-
-        return [value]
-
-    return []
-
-
-def _compact_news(
-    value: Any,
-) -> list[dict[str, Any]]:
-    records = _extract_records(
-        value,
-        (
-            "articles",
-            "news",
-            "results",
-        ),
-    )
-
-    compact_articles = []
-
-    for record in records[:5]:
-        if not isinstance(record, dict):
-            continue
-
-        source = record.get("publisher") or record.get(
-            "source"
-        )
-
-        if isinstance(source, dict):
-            source = source.get("name")
-
-        article: dict[str, Any] = {}
-
-        title = record.get("title")
-
-        if title:
-            article["title"] = _shorten_text(
-                title,
-                220,
-            )
-
-        if source:
-            article["publisher"] = str(source)
-
-        published_date = (
-            record.get("publishedDate")
-            or record.get("publishedAt")
-            or record.get("date")
-        )
-
-        if published_date:
-            article["publishedDate"] = str(
-                published_date
-            )[:30]
-
-        summary = (
-            record.get("summary")
-            or record.get("description")
-            or record.get("content")
-        )
-
-        if summary:
-            article["summary"] = _shorten_text(
-                summary,
-                350,
-            )
-
-        url = record.get("url") or record.get("link")
-
-        if url:
-            article["url"] = str(url)
-
-        if article:
-            compact_articles.append(article)
-
-    return compact_articles
-
-
-def _compact_filings(
-    value: Any,
-) -> list[dict[str, Any]]:
-    records = _extract_records(
-        value,
-        (
-            "filings",
-            "results",
-            "data",
-        ),
-    )
-
-    compact_filings = []
-
-    for record in records[:5]:
-        if not isinstance(record, dict):
-            continue
-
-        filing: dict[str, Any] = {}
-
-        form = (
-            record.get("form")
-            or record.get("formType")
-            or record.get("filingType")
-            or record.get("type")
-        )
-
-        if form:
-            filing["form"] = str(form)
-
-        filing_date = (
-            record.get("filingDate")
-            or record.get("filedDate")
-            or record.get("date")
-        )
-
-        if filing_date:
-            filing["filingDate"] = str(
-                filing_date
-            )[:30]
-
-        summary = (
-            record.get("summary")
-            or record.get("description")
-            or record.get("title")
-        )
-
-        if summary:
-            filing["summary"] = _shorten_text(
-                summary,
-                400,
-            )
-
-        link = (
-            record.get("link")
-            or record.get("url")
-            or record.get("filingUrl")
-            or record.get("finalLink")
-        )
-
-        if link:
-            filing["link"] = str(link)
-
-        if filing:
-            compact_filings.append(filing)
-
-    return compact_filings
-
-
-def _compact_tool_result(
-    tool_name: str,
-    result: Any,
-) -> Any:
-    if tool_name == "get_company_news":
-        return {
-            "articles": _compact_news(result)
-        }
-
-    if tool_name == "get_company_filings":
-        return {
-            "filings": _compact_filings(result)
-        }
-
-    if tool_name == "get_company_overview":
-        if not isinstance(result, dict):
-            return result
-
-        compact_result = dict(result)
-
-        if "news" in compact_result:
-            compact_result["news"] = _compact_news(
-                compact_result["news"]
-            )
-
-        if isinstance(
-            compact_result.get("history"),
-            list,
-        ):
-            compact_result["history"] = (
-                compact_result["history"][-5:]
-            )
-
-        return compact_result
-
-    if tool_name == "get_company_competitors":
-        if isinstance(result, list):
-            return result[:8]
-
-        return result
-
-    if tool_name == "get_stock_analysis":
-        if not isinstance(result, dict):
-            return result
-
-        compact_result = dict(result)
-
-        for key in (
-            "priceHistory",
-            "price_history",
-            "history",
-        ):
-            history = compact_result.get(key)
-
-            if isinstance(history, list):
-                compact_result[key] = history[-30:]
-                break
-
-        return compact_result
-
-    return result
 
 
 def _get_company_details(
@@ -438,45 +224,31 @@ Tool rules:
 6. Use SEC filing, recommendation, sentiment, and competitor tools
    when those topics are requested.
 
-7. You may answer general educational finance questions using your
-   general knowledge.
+7. Use get_my_watchlist when the user asks about their watchlist,
+   saved companies, or tracked companies.
 
-8. Never invent prices, financial metrics, news, release dates,
-   or company facts.
+8. Use get_my_saved_reports when the user asks to see saved reports.
 
-9. If a tool returns an error, explain that the requested live data
-   could not be retrieved instead of making up an answer.
+9. Use get_saved_report when the user asks to analyze a specific
+   saved report.
 
-10. Do not provide guaranteed investment advice. Explain risks and
+10. You may answer general educational finance questions using
+    your general knowledge.
+
+11. Never invent prices, financial metrics, news, release dates,
+    or company facts.
+
+12. If a tool returns an error, explain that the requested live data
+    could not be retrieved instead of making up an answer.
+
+13. Do not provide guaranteed investment advice. Explain risks and
     encourage independent research.
 
-Formatting rules:
+14. Keep answers concise but complete. Use Markdown bullet points
+    and headings when useful.
 
-11. Never display raw JSON, Python dictionaries, or API objects.
-
-12. Never show a naked URL. Always use a Markdown link, such as:
-    [View filing](https://example.com).
-
-13. For SEC filings, show no more than five filings. Format each one
-    like this:
-
-    ### Form 8-K — Filed July 30, 2026
-    One short sentence explaining what the filing contains.
-    [View filing](URL)
-
-14. For news, show only the title, publisher, date, and a short
-    explanation. Do not copy the full article.
-
-15. For financial metrics, use a compact table or short bullet list.
-    Format currency, percentages, and ratios clearly.
-
-16. Keep normal responses under 250 words unless the user asks
-    for a detailed explanation.
-
-17. Use simple headings and compact bullet points. Do not create
-    deeply nested lists or empty bullet points.
-
-18. Do not repeat the same information multiple times.
+15. Do not show raw JSON or Python dictionaries. Convert tool
+    results into readable English.
 
 Current page context:
 {context_json}
@@ -539,6 +311,8 @@ def _build_contents(
 
 async def _run_gemini_with_tools(
     request: AssistantChatRequest,
+    user_id: int | None = None,
+    db: AsyncSession | None = None,
 ) -> str:
     if not GEMINI_API_KEY:
         raise AssistantUnavailable(
@@ -605,20 +379,17 @@ async def _run_gemini_with_tools(
                 {},
             ) or {}
 
-            raw_result = await execute_assistant_tool(
+            result = await execute_assistant_tool(
                 function_name,
                 dict(function_arguments),
-            )
-
-            compact_result = _compact_tool_result(
-                function_name,
-                raw_result,
+                user_id=user_id,
+                db=db,
             )
 
             response_kwargs: dict[str, Any] = {
                 "name": function_name,
                 "response": {
-                    "result": compact_result,
+                    "result": result,
                 },
             }
 
@@ -670,7 +441,7 @@ async def _get_fallback_news(
     if isinstance(result, list):
         return [
             article
-            for article in result[:5]
+            for article in result[:6]
             if isinstance(article, dict)
         ]
 
@@ -686,7 +457,7 @@ def _build_fallback_answer(
 
     if _is_summary_question(request.message):
         lines = [
-            "### Screen Summary",
+            "Here is a summary of the data currently shown:"
         ]
 
         if company_name or ticker:
@@ -696,7 +467,7 @@ def _build_fallback_answer(
                 company_label += f" ({ticker})"
 
             lines.append(
-                f"- **Company:** {company_label}"
+                f"- Company: {company_label}"
             )
 
         company = context.get("company")
@@ -719,7 +490,7 @@ def _build_fallback_answer(
 
                 if value is not None:
                     lines.append(
-                        f"- **{label}:** "
+                        f"- {label}: "
                         f"{_format_value(value)}"
                     )
 
@@ -729,7 +500,7 @@ def _build_fallback_answer(
 
         if calculated_pe is not None:
             lines.append(
-                "- **Calculated P/E Ratio:** "
+                "- Calculated P/E Ratio: "
                 f"{_format_value(calculated_pe)}"
             )
 
@@ -744,23 +515,22 @@ def _build_fallback_answer(
 
             if signal_value:
                 lines.append(
-                    f"- **Stock Signal:** {signal_value}"
+                    f"- Stock signal: {signal_value}"
                 )
 
         return "\n".join(lines)
 
     if related_news:
         lines = [
-            "### Recent Related News",
+            "I could not reach the AI service, "
+            "but here are related recent headlines:"
         ]
 
         for article in related_news:
             title = article.get("title")
 
             if title:
-                lines.append(
-                    f"- **{title}**"
-                )
+                lines.append(f"- {title}")
 
         return "\n".join(lines)
 
@@ -772,15 +542,35 @@ def _build_fallback_answer(
 
 async def generate_assistant_answer(
     request: AssistantChatRequest,
+    user_id: int | None = None,
+    db: AsyncSession | None = None,
 ) -> str:
     try:
-        return await _run_gemini_with_tools(request)
+        return await _run_gemini_with_tools(
+            request,
+            user_id=user_id,
+            db=db,
+        )
 
     except Exception as error:
         logger.exception(
-            "Assistant request failed: %s",
+            "Gemini assistant request failed: %s",
             error,
         )
+
+        if _is_gemini_quota_error(error):
+            try:
+                return await generate_openai_fallback_answer(
+                    request,
+                    user_id=user_id,
+                    db=db,
+                )
+
+            except Exception as fallback_error:
+                logger.exception(
+                    "OpenAI fallback request failed: %s",
+                    fallback_error,
+                )
 
         related_news = await _get_fallback_news(
             request

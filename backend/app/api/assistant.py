@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
+from app.db.database import get_db
 from app.models.user import User
 from app.schemas.assistant import (
     AssistantChatRequest,
@@ -25,13 +27,16 @@ router = APIRouter(
 async def chat_with_assistant(
     payload: AssistantChatRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
-        answer = await generate_assistant_answer(payload)
-
-        return AssistantChatResponse(
-            answer=answer
+        answer = await generate_assistant_answer(
+            payload,
+            user_id=current_user.id,
+            db=db,
         )
+
+        return AssistantChatResponse(answer=answer)
 
     except AssistantUnavailable as error:
         raise HTTPException(
