@@ -10,12 +10,19 @@ import { usePathname } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import {
   Bot,
+  Plus,
   Send,
   Sparkles,
   X,
 } from "lucide-react";
 
-import { api } from "@/lib/api";
+import {
+  addAssistantMessage,
+  api,
+  createAssistantConversation,
+  getAssistantConversation,
+  getAssistantConversations,
+} from "@/lib/api";
 
 type AssistantMessage = {
   role: "user" | "assistant";
@@ -37,10 +44,17 @@ export function AIAssistant({
 }: AIAssistantProps) {
   const pathname = usePathname();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationIdRef = useRef<number | null>(null);
+  const hasInitializedRef = useRef(false);
 
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isLoadingConversation, setIsLoadingConversation] =
+    useState(true);
+  const [conversationError, setConversationError] =
+    useState("");
+
   const [messages, setMessages] = useState<
     AssistantMessage[]
   >([welcomeMessage]);
@@ -53,6 +67,138 @@ export function AIAssistant({
     }
   }, [messages, isOpen]);
 
+  useEffect(() => {
+    if (hasInitializedRef.current) {
+      return;
+    }
+
+    hasInitializedRef.current = true;
+
+    let cancelled = false;
+
+    async function initializeConversation() {
+      setIsLoadingConversation(true);
+
+      try {
+        const conversations =
+          await getAssistantConversations();
+
+        if (conversations.length > 0) {
+          const latestConversation = conversations[0];
+
+          const conversation =
+            await getAssistantConversation(
+              latestConversation.id
+            );
+
+          if (cancelled) {
+            return;
+          }
+
+          conversationIdRef.current = conversation.id;
+
+          const savedMessages =
+            conversation.messages.map((message) => ({
+              role: message.role,
+              content: message.content,
+            }));
+
+          setMessages(
+            savedMessages.length > 0
+              ? savedMessages
+              : [welcomeMessage]
+          );
+        } else {
+          const newConversation =
+            await createAssistantConversation();
+
+          if (cancelled) {
+            return;
+          }
+
+          conversationIdRef.current =
+            newConversation.id;
+
+          setMessages([welcomeMessage]);
+        }
+      } catch (error) {
+        console.error(
+          "Unable to load assistant conversation:",
+          error
+        );
+
+        if (!cancelled) {
+          setConversationError(
+            "Conversation memory is temporarily unavailable. Your current chat can still continue."
+          );
+
+          setMessages([welcomeMessage]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingConversation(false);
+        }
+      }
+    }
+
+    void initializeConversation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function ensureConversation(): Promise<
+    number | null
+  > {
+    if (conversationIdRef.current !== null) {
+      return conversationIdRef.current;
+    }
+
+    try {
+      const conversation =
+        await createAssistantConversation();
+
+      conversationIdRef.current = conversation.id;
+      setConversationError("");
+
+      return conversation.id;
+    } catch (error) {
+      console.error(
+        "Unable to create assistant conversation:",
+        error
+      );
+
+      setConversationError(
+        "Conversation could not be saved, but you can still use the assistant."
+      );
+
+      return null;
+    }
+  }
+
+  async function saveMessage(
+    conversationId: number | null,
+    message: AssistantMessage
+  ) {
+    if (conversationId === null) {
+      return;
+    }
+
+    try {
+      await addAssistantMessage(
+        conversationId,
+        message.role,
+        message.content
+      );
+    } catch (error) {
+      console.error(
+        "Unable to save assistant message:",
+        error
+      );
+    }
+  }
+
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -60,9 +206,16 @@ export function AIAssistant({
 
     const question = input.trim();
 
-    if (!question || isSending) {
+    if (
+      !question ||
+      isSending ||
+      isLoadingConversation
+    ) {
       return;
     }
+
+    const conversationId =
+      await ensureConversation();
 
     const userMessage: AssistantMessage = {
       role: "user",
@@ -78,6 +231,8 @@ export function AIAssistant({
     setInput("");
     setIsSending(true);
 
+    await saveMessage(conversationId, userMessage);
+
     try {
       const response = await api.post<{
         answer: string;
@@ -90,34 +245,71 @@ export function AIAssistant({
         },
       });
 
+      const assistantMessage: AssistantMessage = {
+        role: "assistant",
+        content: response.data.answer,
+      };
+
       setMessages((currentMessages) => [
         ...currentMessages,
-        {
-          role: "assistant",
-          content: response.data.answer,
-        },
+        assistantMessage,
       ]);
+
+      await saveMessage(
+        conversationId,
+        assistantMessage
+      );
     } catch (error) {
       console.error(
         "AI assistant request failed:",
         error
       );
 
+      const errorMessage: AssistantMessage = {
+        role: "assistant",
+        content:
+          "I’m unable to respond right now. Please check that the backend is running and try again.",
+      };
+
       setMessages((currentMessages) => [
         ...currentMessages,
-        {
-          role: "assistant",
-          content:
-            "I’m unable to respond right now. Please check that the backend is running and try again.",
-        },
+        errorMessage,
       ]);
+
+      await saveMessage(
+        conversationId,
+        errorMessage
+      );
     } finally {
       setIsSending(false);
     }
   }
 
-  function clearConversation() {
-    setMessages([welcomeMessage]);
+  async function startNewConversation() {
+    if (isSending) {
+      return;
+    }
+
+    setConversationError("");
+
+    try {
+      const conversation =
+        await createAssistantConversation(
+          "New conversation"
+        );
+
+      conversationIdRef.current = conversation.id;
+      setMessages([welcomeMessage]);
+    } catch (error) {
+      console.error(
+        "Unable to start new conversation:",
+        error
+      );
+
+      setConversationError(
+        "Unable to start a new conversation."
+      );
+    }
   }
 
   return (
@@ -159,120 +351,147 @@ export function AIAssistant({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              aria-label="Close assistant"
-              className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              <X size={20} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() =>
+                  void startNewConversation()
+                }
+                disabled={isSending}
+                aria-label="Start new conversation"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
+              >
+                <Plus size={19} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                aria-label="Close assistant"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
           </header>
 
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            {messages.map((message, index) => {
-              const isUser = message.role === "user";
+          {conversationError && (
+            <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+              {conversationError}
+            </p>
+          )}
 
-              return (
-                <div
-                  key={`${message.role}-${index}`}
-                  className={`flex ${
-                    isUser
-                      ? "justify-end"
-                      : "justify-start"
-                  }`}
-                >
+          <div className="flex-1 space-y-4 overflow-y-auto p-4">
+            {isLoadingConversation ? (
+              <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                Loading conversation...
+              </div>
+            ) : (
+              messages.map((message, index) => {
+                const isUser =
+                  message.role === "user";
+
+                return (
                   <div
-                    className={`max-w-[85%] break-words overflow-hidden rounded-2xl px-4 py-3 text-sm leading-6 ${
+                    key={`${message.role}-${index}`}
+                    className={`flex ${
                       isUser
-                        ? "rounded-br-md bg-purple-600 text-white"
-                        : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        ? "justify-end"
+                        : "justify-start"
                     }`}
                   >
-                    <ReactMarkdown
-                      components={{
-                        p: ({ children }) => (
-                          <p className="mb-2 last:mb-0">
-                            {children}
-                          </p>
-                        ),
-
-                        h1: ({ children }) => (
-                          <h1 className="mb-2 mt-2 text-base font-bold">
-                            {children}
-                          </h1>
-                        ),
-
-                        h2: ({ children }) => (
-                          <h2 className="mb-2 mt-3 text-base font-bold">
-                            {children}
-                          </h2>
-                        ),
-
-                        h3: ({ children }) => (
-                          <h3 className="mb-2 mt-3 font-semibold">
-                            {children}
-                          </h3>
-                        ),
-
-                        ul: ({ children }) => (
-                          <ul className="mb-2 list-disc space-y-1 pl-5">
-                            {children}
-                          </ul>
-                        ),
-
-                        ol: ({ children }) => (
-                          <ol className="mb-2 list-decimal space-y-1 pl-5">
-                            {children}
-                          </ol>
-                        ),
-
-                        li: ({ children }) => (
-                          <li className="break-words">
-                            {children}
-                          </li>
-                        ),
-
-                        strong: ({ children }) => (
-                          <strong className="font-semibold">
-                            {children}
-                          </strong>
-                        ),
-
-                        a: ({ children, href }) => (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={`break-all underline ${
-                              isUser
-                                ? "text-purple-200"
-                                : "text-purple-600 dark:text-purple-400"
-                            }`}
-                          >
-                            {children}
-                          </a>
-                        ),
-
-                        blockquote: ({ children }) => (
-                          <blockquote className="my-2 border-l-2 border-purple-400 pl-3 italic">
-                            {children}
-                          </blockquote>
-                        ),
-
-                        code: ({ children }) => (
-                          <code className="rounded bg-slate-200 px-1 py-0.5 text-xs dark:bg-slate-700">
-                            {children}
-                          </code>
-                        ),
-                      }}
+                    <div
+                      className={`max-w-[85%] break-words overflow-hidden rounded-2xl px-4 py-3 text-sm leading-6 ${
+                        isUser
+                          ? "rounded-br-md bg-purple-600 text-white"
+                          : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      }`}
                     >
-                      {message.content}
-                    </ReactMarkdown>
+                      <ReactMarkdown
+                        components={{
+                          p: ({ children }) => (
+                            <p className="mb-2 last:mb-0">
+                              {children}
+                            </p>
+                          ),
+
+                          h1: ({ children }) => (
+                            <h1 className="mb-2 mt-2 text-base font-bold">
+                              {children}
+                            </h1>
+                          ),
+
+                          h2: ({ children }) => (
+                            <h2 className="mb-2 mt-3 text-base font-bold">
+                              {children}
+                            </h2>
+                          ),
+
+                          h3: ({ children }) => (
+                            <h3 className="mb-2 mt-3 font-semibold">
+                              {children}
+                            </h3>
+                          ),
+
+                          ul: ({ children }) => (
+                            <ul className="mb-2 list-disc space-y-1 pl-5">
+                              {children}
+                            </ul>
+                          ),
+
+                          ol: ({ children }) => (
+                            <ol className="mb-2 list-decimal space-y-1 pl-5">
+                              {children}
+                            </ol>
+                          ),
+
+                          li: ({ children }) => (
+                            <li className="break-words">
+                              {children}
+                            </li>
+                          ),
+
+                          strong: ({ children }) => (
+                            <strong className="font-semibold">
+                              {children}
+                            </strong>
+                          ),
+
+                          a: ({ children, href }) => (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`break-all underline ${
+                                isUser
+                                  ? "text-purple-200"
+                                  : "text-purple-600 dark:text-purple-400"
+                              }`}
+                            >
+                              {children}
+                            </a>
+                          ),
+
+                          blockquote: ({ children }) => (
+                            <blockquote className="my-2 border-l-2 border-purple-400 pl-3 italic">
+                              {children}
+                            </blockquote>
+                          ),
+
+                          code: ({ children }) => (
+                            <code className="rounded bg-slate-200 px-1 py-0.5 text-xs dark:bg-slate-700">
+                              {children}
+                            </code>
+                          ),
+                        }}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
 
             {isSending && (
               <div className="flex justify-start">
@@ -288,10 +507,13 @@ export function AIAssistant({
           <div className="border-t border-slate-200 p-4 dark:border-slate-700">
             <button
               type="button"
-              onClick={clearConversation}
-              className="mb-3 text-xs font-medium text-purple-600 hover:text-purple-800 dark:text-purple-400"
+              onClick={() =>
+                void startNewConversation()
+              }
+              disabled={isSending}
+              className="mb-3 text-xs font-medium text-purple-600 hover:text-purple-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-purple-400"
             >
-              Clear conversation
+              New conversation
             </button>
 
             <form
@@ -311,7 +533,11 @@ export function AIAssistant({
 
               <button
                 type="submit"
-                disabled={!input.trim() || isSending}
+                disabled={
+                  !input.trim() ||
+                  isSending ||
+                  isLoadingConversation
+                }
                 aria-label="Send message"
                 className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-600 text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
               >

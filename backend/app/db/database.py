@@ -43,14 +43,27 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    from app.models.password_reset_token import PasswordResetToken  # noqa: F401
-    from app.models.report import Report  # noqa: F401
-    from app.models.search_history import SearchHistory  # noqa: F401
+    from app.models.assistant_conversation import (
+        AssistantConversation,
+    )  # noqa: F401
+    from app.models.assistant_message import (
+        AssistantMessage,
+    )  # noqa: F401
+    from app.models.password_reset_token import (
+        PasswordResetToken,
+    )  # noqa: F401
+    from app.models.search_history import (
+        SearchHistory,
+    )  # noqa: F401
     from app.models.user import User  # noqa: F401
-    from app.models.watchlist_item import WatchlistItem  # noqa: F401
+    from app.models.watchlist_item import (
+        WatchlistItem,
+    )  # noqa: F401
 
     async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(
+            Base.metadata.create_all
+        )
 
         await connection.exec_driver_sql(
             """

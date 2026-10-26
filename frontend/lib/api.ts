@@ -288,3 +288,86 @@ export const downloadReport = async (
     window.URL.revokeObjectURL(fileUrl);
   }, 1000);
 };
+
+
+export type AssistantMessageRole =
+  | "user"
+  | "assistant";
+
+export type AssistantMessage = {
+  id: number;
+  role: AssistantMessageRole;
+  content: string;
+  created_at: string;
+};
+
+export type AssistantConversation = {
+  id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AssistantConversationDetail =
+  AssistantConversation & {
+    messages: AssistantMessage[];
+  };
+
+export const getAssistantConversations =
+  async (): Promise<AssistantConversation[]> => {
+    const response = await api.get<
+      AssistantConversation[]
+    >("/api/assistant/conversations");
+
+    return response.data;
+  };
+
+export const createAssistantConversation =
+  async (
+    title = "New conversation"
+  ): Promise<AssistantConversation> => {
+    const response =
+      await api.post<AssistantConversation>(
+        "/api/assistant/conversations",
+        { title }
+      );
+
+    return response.data;
+  };
+
+export const getAssistantConversation =
+  async (
+    conversationId: number
+  ): Promise<AssistantConversationDetail> => {
+    const response =
+      await api.get<AssistantConversationDetail>(
+        `/api/assistant/conversations/${conversationId}`
+      );
+
+    return response.data;
+  };
+
+export const deleteAssistantConversation =
+  async (conversationId: number) => {
+    const response = await api.delete(
+      `/api/assistant/conversations/${conversationId}`
+    );
+
+    return response.data;
+  };
+
+export const addAssistantMessage = async (
+  conversationId: number,
+  role: AssistantMessageRole,
+  content: string
+): Promise<AssistantMessage> => {
+  const response = await api.post<AssistantMessage>(
+    `/api/assistant/conversations/${conversationId}/messages`,
+    {
+      role,
+      content,
+    }
+  );
+
+  return response.data;
+};
