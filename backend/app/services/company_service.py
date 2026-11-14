@@ -22,6 +22,29 @@ COMPANY_OVERVIEW_CACHE_TTL = 30 * 60
 AI_RECOMMENDATION_CACHE_TTL = 60 * 60
 SENTIMENT_CACHE_TTL = 60 * 60
 SEC_FILINGS_CACHE_TTL = 6 * 60 * 60
+COMPETITOR_CACHE_TTL = 60 * 60
+
+
+def _ai_result_unavailable(
+    result: dict[str, Any],
+) -> bool:
+    combined_text = " ".join(
+        [
+            str(result.get("recommendation", "")),
+            str(result.get("overall", "")),
+            str(result.get("summary", "")),
+            str(result.get("reasoning", "")),
+        ]
+    ).lower()
+
+    return any(
+        phrase in combined_text
+        for phrase in (
+            "unavailable",
+            "temporarily unavailable",
+            "both ai providers",
+        )
+    )
 
 
 async def search_companies(
@@ -32,7 +55,6 @@ async def search_companies(
     if len(normalized_query) < 2:
         return []
 
-    # v2 bypasses old Redis results such as APLY.NE or AAPL.MX.
     cache_key = f"search:v2:{normalized_query}"
 
     try:
@@ -63,9 +85,15 @@ async def search_companies(
             },
         )
 
-        raw_results = data if isinstance(data, list) else []
+        raw_results = (
+            data
+            if isinstance(data, list)
+            else []
+        )
 
-        normalized_results: list[dict[str, Any]] = []
+        normalized_results: list[
+            dict[str, Any]
+        ] = []
 
         for item in raw_results:
             if not isinstance(item, dict):
@@ -123,9 +151,9 @@ async def search_companies(
                 company_name == normalized_query
             )
 
-            # Prefer U.S. symbols such as AAPL over
-            # exchange variants such as AAPL.MX.
-            is_us_symbol = int("." not in symbol)
+            is_us_symbol = int(
+                "." not in symbol
+            )
 
             has_exchange_suffix = int(
                 "." in symbol
@@ -170,7 +198,8 @@ async def search_companies(
             f"Company search failed: {error}"
         )
         return []
-    
+
+
 async def get_company_overview(
     ticker: str,
 ) -> dict[str, Any] | None:
@@ -433,28 +462,94 @@ async def get_company_recommendation(
     if overview is None:
         return None
 
+    company = overview.get(
+        "company",
+        {},
+    )
+
+    pe_ratio = company.get("peRatio")
+
+    if pe_ratio is None:
+        try:
+            price = float(
+                company.get("price")
+            )
+
+            eps = float(
+                company.get("eps")
+            )
+
+            if eps != 0:
+                pe_ratio = price / eps
+
+        except (
+            TypeError,
+            ValueError,
+            ZeroDivisionError,
+        ):
+            pe_ratio = None
+
+    recommendation_data = {
+        "company": {
+            "symbol": company.get("symbol"),
+            "companyName": company.get(
+                "companyName"
+            ),
+            "exchange": company.get(
+                "exchange"
+            ),
+            "marketCap": company.get(
+                "marketCap"
+            ),
+            "revenue": company.get(
+                "revenue"
+            ),
+            "peRatio": pe_ratio,
+            "eps": company.get("eps"),
+            "profitMargin": company.get(
+                "profitMargin"
+            ),
+            "debt": company.get("debt"),
+            "cashFlow": company.get(
+                "cashFlow"
+            ),
+        },
+        "history": overview.get(
+            "history",
+            [],
+        ),
+    }
+
     recommendation = (
         await generate_investment_recommendation(
-            overview
+            recommendation_data
         )
     )
 
-    try:
-        await redis_cache.set(
-            cache_key,
-            recommendation,
-            ttl=AI_RECOMMENDATION_CACHE_TTL,
-        )
+    if not _ai_result_unavailable(
+        recommendation
+    ):
+        try:
+            await redis_cache.set(
+                cache_key,
+                recommendation,
+                ttl=AI_RECOMMENDATION_CACHE_TTL,
+            )
 
-        print(
-            f"REDIS AI RECOMMENDATION STORED: "
-            f"{normalized_ticker}"
-        )
+            print(
+                f"REDIS AI RECOMMENDATION STORED: "
+                f"{normalized_ticker}"
+            )
 
-    except Exception as error:
+        except Exception as error:
+            print(
+                f"Redis AI cache write failed: "
+                f"{error}"
+            )
+    else:
         print(
-            f"Redis AI cache write failed: "
-            f"{error}"
+            f"AI recommendation unavailable; "
+            f"not caching {normalized_ticker}"
         )
 
     return recommendation
@@ -469,7 +564,8 @@ async def get_company_sentiment(
         return None
 
     cache_key = (
-        f"sentiment:{normalized_ticker}"
+        f"sentiment:"
+        f"{normalized_ticker}"
     )
 
     try:
@@ -504,22 +600,30 @@ async def get_company_sentiment(
         news
     )
 
-    try:
-        await redis_cache.set(
-            cache_key,
-            sentiment,
-            ttl=SENTIMENT_CACHE_TTL,
-        )
+    if not _ai_result_unavailable(
+        sentiment
+    ):
+        try:
+            await redis_cache.set(
+                cache_key,
+                sentiment,
+                ttl=SENTIMENT_CACHE_TTL,
+            )
 
-        print(
-            f"REDIS SENTIMENT STORED: "
-            f"{normalized_ticker}"
-        )
+            print(
+                f"REDIS SENTIMENT STORED: "
+                f"{normalized_ticker}"
+            )
 
-    except Exception as error:
+        except Exception as error:
+            print(
+                f"Redis sentiment cache write failed: "
+                f"{error}"
+            )
+    else:
         print(
-            f"Redis sentiment cache write failed: "
-            f"{error}"
+            f"AI sentiment unavailable; "
+            f"not caching {normalized_ticker}"
         )
 
     return sentiment
@@ -533,7 +637,9 @@ async def get_company_filings(
     if not normalized_ticker:
         return []
 
-    filings = await get_recent_filings(normalized_ticker)
+    filings = await get_recent_filings(
+        normalized_ticker
+    )
 
     async def process_filing(
         filing: dict[str, Any],
@@ -563,7 +669,8 @@ async def get_company_filings(
 
         except Exception as error:
             print(
-                f"Redis SEC summary read failed: {error}"
+                f"Redis SEC summary read failed: "
+                f"{error}"
             )
 
         try:
@@ -576,12 +683,8 @@ async def get_company_filings(
                 filing_text,
             )
 
-            # Do not cache Gemini failures.
-            if not summary.get(
-                "summary",
-                "",
-            ).startswith(
-                "SEC filing summary is temporarily"
+            if not _ai_result_unavailable(
+                summary
             ):
                 try:
                     await redis_cache.set(
@@ -601,6 +704,12 @@ async def get_company_filings(
                         f"Redis SEC summary write failed: "
                         f"{error}"
                     )
+            else:
+                print(
+                    f"SEC summary unavailable; "
+                    f"not caching {normalized_ticker} "
+                    f"{filing['type']}"
+                )
 
             return {
                 **filing,
@@ -628,8 +737,6 @@ async def get_company_filings(
         if filing is not None
     ]
 
-COMPETITOR_CACHE_TTL = 60 * 60
-
 
 async def get_company_competitors(
     ticker: str,
@@ -639,7 +746,10 @@ async def get_company_competitors(
     if not normalized_ticker:
         return []
 
-    cache_key = f"competitors:{normalized_ticker}"
+    cache_key = (
+        f"competitors:"
+        f"{normalized_ticker}"
+    )
 
     try:
         cached = await redis_cache.get(cache_key)
@@ -653,7 +763,8 @@ async def get_company_competitors(
 
     except Exception as error:
         print(
-            f"Redis competitor cache read failed: {error}"
+            f"Redis competitor cache read failed: "
+            f"{error}"
         )
 
     try:
@@ -677,7 +788,6 @@ async def get_company_competitors(
                 ):
                     peer_symbols.append(symbol)
 
-        # Keep API usage reasonable.
         selected_symbols = [
             normalized_ticker,
             *peer_symbols[:2],

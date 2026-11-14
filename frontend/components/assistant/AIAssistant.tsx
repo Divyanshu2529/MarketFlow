@@ -1,5 +1,6 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
 import {
   FormEvent,
   useEffect,
@@ -7,7 +8,6 @@ import {
   useState,
 } from "react";
 import { usePathname } from "next/navigation";
-import ReactMarkdown from "react-markdown";
 import {
   Bot,
   Plus,
@@ -16,9 +16,9 @@ import {
   X,
 } from "lucide-react";
 
+import { api } from "@/lib/api";
 import {
   addAssistantMessage,
-  api,
   createAssistantConversation,
   getAssistantConversation,
   getAssistantConversations,
@@ -36,8 +36,10 @@ type AIAssistantProps = {
 const welcomeMessage: AssistantMessage = {
   role: "assistant",
   content:
-    "Hi! I’m the MarketFlow Assistant. Ask me about the page you are viewing, stock analysis, financial concepts, or anything else related to MarketFlow.",
+    "Hi! I’m the MarketFlow Assistant. Ask me about the page you are viewing, stock analysis, financial concepts, or anything related to MarketFlow.",
 };
+
+const CONVERSATION_LOAD_TIMEOUT = 8000;
 
 export function AIAssistant({
   context = {},
@@ -46,80 +48,98 @@ export function AIAssistant({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationIdRef = useRef<number | null>(null);
   const hasInitializedRef = useRef(false);
+  const hasUserInteractedRef = useRef(false);
 
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isLoadingConversation, setIsLoadingConversation] =
-    useState(true);
+    useState(false);
   const [conversationError, setConversationError] =
     useState("");
-
   const [messages, setMessages] = useState<
     AssistantMessage[]
   >([welcomeMessage]);
 
   useEffect(() => {
-    if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: "smooth",
-      });
+    if (!isOpen) {
+      return;
     }
+
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
   }, [messages, isOpen]);
 
   useEffect(() => {
-    if (hasInitializedRef.current) {
+    if (!isOpen || hasInitializedRef.current) {
       return;
     }
 
     hasInitializedRef.current = true;
 
     let cancelled = false;
+    let timedOut = false;
+
+    setIsLoadingConversation(true);
+
+    const timeoutId = setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+
+      timedOut = true;
+
+      setConversationError(
+        "Conversation history could not be loaded. You can still chat normally."
+      );
+
+      setIsLoadingConversation(false);
+    }, CONVERSATION_LOAD_TIMEOUT);
 
     async function initializeConversation() {
-      setIsLoadingConversation(true);
-
       try {
         const conversations =
           await getAssistantConversations();
 
-        if (conversations.length > 0) {
-          const latestConversation = conversations[0];
+        if (
+          cancelled ||
+          timedOut ||
+          hasUserInteractedRef.current
+        ) {
+          return;
+        }
 
-          const conversation =
-            await getAssistantConversation(
-              latestConversation.id
-            );
+        if (conversations.length === 0) {
+          conversationIdRef.current = null;
+          return;
+        }
 
-          if (cancelled) {
-            return;
-          }
+        const latestConversation = conversations[0];
 
-          conversationIdRef.current = conversation.id;
-
-          const savedMessages =
-            conversation.messages.map((message) => ({
-              role: message.role,
-              content: message.content,
-            }));
-
-          setMessages(
-            savedMessages.length > 0
-              ? savedMessages
-              : [welcomeMessage]
+        const conversation =
+          await getAssistantConversation(
+            latestConversation.id
           );
-        } else {
-          const newConversation =
-            await createAssistantConversation();
 
-          if (cancelled) {
-            return;
-          }
+        if (
+          cancelled ||
+          timedOut ||
+          hasUserInteractedRef.current
+        ) {
+          return;
+        }
 
-          conversationIdRef.current =
-            newConversation.id;
+        conversationIdRef.current = conversation.id;
 
-          setMessages([welcomeMessage]);
+        const savedMessages =
+          conversation.messages?.map((message) => ({
+            role: message.role,
+            content: message.content,
+          })) ?? [];
+
+        if (savedMessages.length > 0) {
+          setMessages(savedMessages);
         }
       } catch (error) {
         console.error(
@@ -127,14 +147,14 @@ export function AIAssistant({
           error
         );
 
-        if (!cancelled) {
+        if (!cancelled && !timedOut) {
           setConversationError(
-            "Conversation memory is temporarily unavailable. Your current chat can still continue."
+            "Conversation memory is temporarily unavailable. You can still chat normally."
           );
-
-          setMessages([welcomeMessage]);
         }
       } finally {
+        clearTimeout(timeoutId);
+
         if (!cancelled) {
           setIsLoadingConversation(false);
         }
@@ -145,8 +165,10 @@ export function AIAssistant({
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
+      setIsLoadingConversation(false);
     };
-  }, []);
+  }, [isOpen]);
 
   async function ensureConversation(): Promise<
     number | null
@@ -170,7 +192,7 @@ export function AIAssistant({
       );
 
       setConversationError(
-        "Conversation could not be saved, but you can still use the assistant."
+        "Conversation memory is unavailable, but you can still continue chatting."
       );
 
       return null;
@@ -181,15 +203,14 @@ export function AIAssistant({
     conversationId: number | null,
     message: AssistantMessage
   ) {
-    if (conversationId === null) {
+    if (!conversationId) {
       return;
     }
 
     try {
       await addAssistantMessage(
         conversationId,
-        message.role,
-        message.content
+        message
       );
     } catch (error) {
       console.error(
@@ -206,13 +227,14 @@ export function AIAssistant({
 
     const question = input.trim();
 
-    if (
-      !question ||
-      isSending ||
-      isLoadingConversation
-    ) {
+    if (!question || isSending) {
       return;
     }
+
+    hasUserInteractedRef.current = true;
+    setIsSending(true);
+    setInput("");
+    setConversationError("");
 
     const conversationId =
       await ensureConversation();
@@ -228,8 +250,6 @@ export function AIAssistant({
     ];
 
     setMessages(updatedMessages);
-    setInput("");
-    setIsSending(true);
 
     await saveMessage(conversationId, userMessage);
 
@@ -247,7 +267,9 @@ export function AIAssistant({
 
       const assistantMessage: AssistantMessage = {
         role: "assistant",
-        content: response.data.answer,
+        content:
+          response.data.answer ||
+          "I could not generate a response.",
       };
 
       setMessages((currentMessages) => [
@@ -268,7 +290,7 @@ export function AIAssistant({
       const errorMessage: AssistantMessage = {
         role: "assistant",
         content:
-          "I’m unable to respond right now. Please check that the backend is running and try again.",
+          "I’m unable to respond right now. Please check that the backend and AI service are running, then try again.",
       };
 
       setMessages((currentMessages) => [
@@ -290,7 +312,10 @@ export function AIAssistant({
       return;
     }
 
+    hasUserInteractedRef.current = true;
+    conversationIdRef.current = null;
     setConversationError("");
+    setMessages([welcomeMessage]);
 
     try {
       const conversation =
@@ -299,7 +324,6 @@ export function AIAssistant({
         );
 
       conversationIdRef.current = conversation.id;
-      setMessages([welcomeMessage]);
     } catch (error) {
       console.error(
         "Unable to start new conversation:",
@@ -307,9 +331,16 @@ export function AIAssistant({
       );
 
       setConversationError(
-        "Unable to start a new conversation."
+        "Unable to save this new conversation, but you can still chat."
       );
     }
+  }
+
+  function clearConversation() {
+    hasUserInteractedRef.current = true;
+    conversationIdRef.current = null;
+    setMessages([welcomeMessage]);
+    setConversationError("");
   }
 
   return (
@@ -361,7 +392,7 @@ export function AIAssistant({
                 aria-label="Start new conversation"
                 className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
               >
-                <Plus size={19} />
+                <Plus size={20} />
               </button>
 
               <button
@@ -376,122 +407,103 @@ export function AIAssistant({
           </header>
 
           {conversationError && (
-            <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            <p className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
               {conversationError}
             </p>
           )}
 
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            {isLoadingConversation ? (
-              <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                Loading conversation...
-              </div>
-            ) : (
-              messages.map((message, index) => {
-                const isUser =
-                  message.role === "user";
+          <div
+            aria-busy={isLoadingConversation}
+            className="flex-1 space-y-4 overflow-y-auto p-4"
+          >
+            {messages.map((message, index) => {
+              const isUser =
+                message.role === "user";
 
-                return (
+              return (
+                <div
+                  key={`${message.role}-${index}`}
+                  className={`flex ${
+                    isUser
+                      ? "justify-end"
+                      : "justify-start"
+                  }`}
+                >
                   <div
-                    key={`${message.role}-${index}`}
-                    className={`flex ${
+                    className={`max-w-[88%] break-words overflow-hidden rounded-2xl px-4 py-3 text-sm leading-6 ${
                       isUser
-                        ? "justify-end"
-                        : "justify-start"
+                        ? "rounded-br-md bg-purple-600 text-white"
+                        : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
                     }`}
                   >
-                    <div
-                      className={`max-w-[85%] break-words overflow-hidden rounded-2xl px-4 py-3 text-sm leading-6 ${
-                        isUser
-                          ? "rounded-br-md bg-purple-600 text-white"
-                          : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                      }`}
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => (
+                          <p className="mb-2 last:mb-0">
+                            {children}
+                          </p>
+                        ),
+                        h1: ({ children }) => (
+                          <h1 className="mb-2 text-lg font-bold">
+                            {children}
+                          </h1>
+                        ),
+                        h2: ({ children }) => (
+                          <h2 className="mb-2 text-base font-bold">
+                            {children}
+                          </h2>
+                        ),
+                        h3: ({ children }) => (
+                          <h3 className="mb-2 font-semibold">
+                            {children}
+                          </h3>
+                        ),
+                        ul: ({ children }) => (
+                          <ul className="mb-2 list-disc space-y-1 pl-5">
+                            {children}
+                          </ul>
+                        ),
+                        ol: ({ children }) => (
+                          <ol className="mb-2 list-decimal space-y-1 pl-5">
+                            {children}
+                          </ol>
+                        ),
+                        li: ({ children }) => (
+                          <li>{children}</li>
+                        ),
+                        strong: ({ children }) => (
+                          <strong className="font-semibold">
+                            {children}
+                          </strong>
+                        ),
+                        a: ({ href, children }) => (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-purple-600 underline dark:text-purple-400"
+                          >
+                            {children}
+                          </a>
+                        ),
+                        blockquote: ({ children }) => (
+                          <blockquote className="border-l-2 border-purple-400 pl-3 italic">
+                            {children}
+                          </blockquote>
+                        ),
+                        code: ({ children }) => (
+                          <code className="rounded bg-slate-200 px-1 py-0.5 text-xs dark:bg-slate-700">
+                            {children}
+                          </code>
+                        ),
+                      }}
                     >
-                      <ReactMarkdown
-                        components={{
-                          p: ({ children }) => (
-                            <p className="mb-2 last:mb-0">
-                              {children}
-                            </p>
-                          ),
-
-                          h1: ({ children }) => (
-                            <h1 className="mb-2 mt-2 text-base font-bold">
-                              {children}
-                            </h1>
-                          ),
-
-                          h2: ({ children }) => (
-                            <h2 className="mb-2 mt-3 text-base font-bold">
-                              {children}
-                            </h2>
-                          ),
-
-                          h3: ({ children }) => (
-                            <h3 className="mb-2 mt-3 font-semibold">
-                              {children}
-                            </h3>
-                          ),
-
-                          ul: ({ children }) => (
-                            <ul className="mb-2 list-disc space-y-1 pl-5">
-                              {children}
-                            </ul>
-                          ),
-
-                          ol: ({ children }) => (
-                            <ol className="mb-2 list-decimal space-y-1 pl-5">
-                              {children}
-                            </ol>
-                          ),
-
-                          li: ({ children }) => (
-                            <li className="break-words">
-                              {children}
-                            </li>
-                          ),
-
-                          strong: ({ children }) => (
-                            <strong className="font-semibold">
-                              {children}
-                            </strong>
-                          ),
-
-                          a: ({ children, href }) => (
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noreferrer"
-                              className={`break-all underline ${
-                                isUser
-                                  ? "text-purple-200"
-                                  : "text-purple-600 dark:text-purple-400"
-                              }`}
-                            >
-                              {children}
-                            </a>
-                          ),
-
-                          blockquote: ({ children }) => (
-                            <blockquote className="my-2 border-l-2 border-purple-400 pl-3 italic">
-                              {children}
-                            </blockquote>
-                          ),
-
-                          code: ({ children }) => (
-                            <code className="rounded bg-slate-200 px-1 py-0.5 text-xs dark:bg-slate-700">
-                              {children}
-                            </code>
-                          ),
-                        }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
-                    </div>
+                      {message.content}
+                    </ReactMarkdown>
                   </div>
-                );
-              })
-            )}
+                </div>
+              );
+            })}
 
             {isSending && (
               <div className="flex justify-start">
@@ -507,13 +519,11 @@ export function AIAssistant({
           <div className="border-t border-slate-200 p-4 dark:border-slate-700">
             <button
               type="button"
-              onClick={() =>
-                void startNewConversation()
-              }
+              onClick={clearConversation}
               disabled={isSending}
               className="mb-3 text-xs font-medium text-purple-600 hover:text-purple-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-purple-400"
             >
-              New conversation
+              Clear conversation
             </button>
 
             <form
@@ -528,15 +538,14 @@ export function AIAssistant({
                 placeholder="Ask a question..."
                 rows={2}
                 maxLength={4000}
-                className="min-h-12 flex-1 resize-none rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:focus:ring-purple-900"
+                disabled={isSending}
+                className="min-h-12 flex-1 resize-none rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:focus:ring-purple-900"
               />
 
               <button
                 type="submit"
                 disabled={
-                  !input.trim() ||
-                  isSending ||
-                  isLoadingConversation
+                  !input.trim() || isSending
                 }
                 aria-label="Send message"
                 className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-600 text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
