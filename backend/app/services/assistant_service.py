@@ -49,8 +49,12 @@ TOOL_SOURCE_LABELS = {
     "get_company_overview": "Financial Modeling Prep",
     "get_stock_analysis": "Financial Modeling Prep",
     "get_company_news": "NewsAPI",
-    "get_company_recommendation": "MarketFlow recommendation service",
-    "get_company_sentiment": "MarketFlow sentiment service",
+    "get_company_recommendation": (
+        "MarketFlow recommendation service"
+    ),
+    "get_company_sentiment": (
+        "MarketFlow sentiment service"
+    ),
     "get_company_filings": "SEC EDGAR",
     "get_company_competitors": "Financial Modeling Prep",
     "compare_companies": "MarketFlow comparison service",
@@ -60,10 +64,12 @@ TOOL_SOURCE_LABELS = {
 }
 
 
-def _is_gemini_quota_error(error: Exception) -> bool:
+def _should_use_openai_fallback(
+    error: Exception,
+) -> bool:
     error_text = str(error).lower()
 
-    quota_markers = (
+    fallback_markers = (
         "resource_exhausted",
         "quota",
         "rate limit",
@@ -71,11 +77,19 @@ def _is_gemini_quota_error(error: Exception) -> bool:
         "429",
         "free_tier_requests",
         "retrydelay",
+        "503",
+        "service unavailable",
+        "temporarily unavailable",
+        "overloaded",
+        "deadline exceeded",
+        "timed out",
+        "timeout",
+        "not configured",
     )
 
     return any(
         marker in error_text
-        for marker in quota_markers
+        for marker in fallback_markers
     )
 
 
@@ -264,10 +278,7 @@ def _format_value(value: Any) -> str:
     if isinstance(value, float):
         return f"{value:.2f}"
 
-    if isinstance(value, dict):
-        return _safe_json(value, 700)
-
-    if isinstance(value, list):
+    if isinstance(value, (dict, list)):
         return _safe_json(value, 700)
 
     return str(value)
@@ -387,6 +398,9 @@ IMPORTANT BEHAVIOR RULES:
 22. Only link to URLs returned by a tool. Never invent links.
 
 23. If information is missing, say what information is missing.
+
+User's current question:
+{request.message}
 
 Answer the user's question directly and clearly.
 Keep the answer concise but complete.
@@ -749,12 +763,11 @@ async def generate_assistant_answer(
         )
 
     except Exception as error:
-        quota_error = _is_gemini_quota_error(error)
-
-        if quota_error:
+        if _should_use_openai_fallback(error):
             logger.warning(
-                "Gemini quota exhausted. "
-                "Switching to OpenAI fallback."
+                "Gemini is unavailable. "
+                "Switching to OpenAI fallback: %s",
+                error,
             )
 
             try:

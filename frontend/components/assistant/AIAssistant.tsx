@@ -1,5 +1,6 @@
 "use client";
 
+import remarkGfm from "remark-gfm";
 import ReactMarkdown from "react-markdown";
 import {
   FormEvent,
@@ -16,9 +17,9 @@ import {
   X,
 } from "lucide-react";
 
-import { api } from "@/lib/api";
 import {
   addAssistantMessage,
+  api,
   createAssistantConversation,
   getAssistantConversation,
   getAssistantConversations,
@@ -203,14 +204,15 @@ export function AIAssistant({
     conversationId: number | null,
     message: AssistantMessage
   ) {
-    if (!conversationId) {
+    if (conversationId === null) {
       return;
     }
 
     try {
       await addAssistantMessage(
         conversationId,
-        message
+        message.role,
+        message.content
       );
     } catch (error) {
       console.error(
@@ -437,7 +439,38 @@ export function AIAssistant({
                     }`}
                   >
                     <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
                       components={{
+                        table: ({ children }) => (
+                          <div className="my-2 overflow-x-auto">
+                            <table className="min-w-full border-collapse text-left text-xs">
+                              {children}
+                            </table>
+                          </div>
+                        ),
+                        thead: ({ children }) => (
+                          <thead className="bg-slate-200 dark:bg-slate-700">
+                            {children}
+                          </thead>
+                        ),
+                        tbody: ({ children }) => (
+                          <tbody>{children}</tbody>
+                        ),
+                        tr: ({ children }) => (
+                          <tr className="border-b border-slate-200 dark:border-slate-600">
+                            {children}
+                          </tr>
+                        ),
+                        th: ({ children }) => (
+                          <th className="px-2 py-2 font-semibold">
+                            {children}
+                          </th>
+                        ),
+                        td: ({ children }) => (
+                          <td className="px-2 py-2">
+                            {children}
+                          </td>
+                        ),
                         p: ({ children }) => (
                           <p className="mb-2 last:mb-0">
                             {children}
