@@ -205,4 +205,4 @@ This reduces unnecessary token usage compared with sending the entire document w
 
 ## Author
 
-Built by [Divyanshu Mehta](https://github.com/Divyanshu2529).
+Built by [Divyanshu Mehta](https://github.com/Divyanshu2529)
