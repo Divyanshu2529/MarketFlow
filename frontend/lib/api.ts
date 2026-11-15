@@ -14,7 +14,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
-    const requestUrl = String(error?.config?.url ?? "");
+    const requestUrl = String(
+      error?.config?.url ?? ""
+    );
+
+    const normalizedRequestUrl =
+      requestUrl.split("?")[0];
+
+    const isSessionCheck =
+      normalizedRequestUrl.endsWith("/api/auth/me");
 
     if (
       status === 401 &&
@@ -34,12 +42,17 @@ api.interceptors.response.use(
       const isAuthRequest =
         requestUrl.includes("/api/auth/login") ||
         requestUrl.includes("/api/auth/signup") ||
-        requestUrl.includes("/api/auth/forgot-password") ||
-        requestUrl.includes("/api/auth/reset-password");
+        requestUrl.includes(
+          "/api/auth/forgot-password"
+        ) ||
+        requestUrl.includes(
+          "/api/auth/reset-password"
+        );
 
       if (
         !isAuthPage &&
         !isAuthRequest &&
+        !isSessionCheck &&
         !isRedirectingToLogin
       ) {
         isRedirectingToLogin = true;
@@ -254,6 +267,16 @@ export const getNewsFeed = async (): Promise<
   const response = await api.get<{
     articles: NewsArticle[];
   }>("/api/news/feed");
+
+  return response.data.articles ?? [];
+};
+
+export const getPublicNewsFeed = async (): Promise<
+  NewsArticle[]
+> => {
+  const response = await api.get<{
+    articles: NewsArticle[];
+  }>("/api/news/public-feed");
 
   return response.data.articles ?? [];
 };

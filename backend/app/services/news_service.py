@@ -1,4 +1,6 @@
 import os
+import random
+import time
 from collections.abc import Sequence
 from typing import Any
 
@@ -16,6 +18,13 @@ if not NEWS_API_KEY:
 
 NEWS_API_BASE_URL = "https://newsapi.org/v2"
 NEWS_API_TIMEOUT = 15
+
+PUBLIC_NEWS_LIMIT = 12
+PUBLIC_NEWS_CACHE_TTL_SECONDS = 300
+
+
+_public_news_cache: list[dict[str, Any]] = []
+_public_news_cached_at = 0.0
 
 
 FINANCIAL_NEWS_QUERY = (
@@ -90,22 +99,75 @@ async def fetch_news(
 
             seen_urls.add(url)
 
+            source = article.get("source") or {}
+
             results.append(
                 {
                     "title": title,
-                    "publisher": (
-                        article.get("source", {}) or {}
-                    ).get("name"),
+                    "publisher": source.get("name"),
                     "publishedDate": article.get(
                         "publishedAt"
                     ),
                     "url": url,
                     "image": article.get("urlToImage"),
-                    "summary": article.get("description"),
+                    "summary": article.get(
+                        "description"
+                    ),
                 }
             )
 
         return results
+
+
+def _select_public_articles(
+    articles: list[dict[str, Any]],
+    limit: int,
+) -> list[dict[str, Any]]:
+    image_articles = [
+        article
+        for article in articles
+        if article.get("image")
+    ]
+
+    candidates = (
+        image_articles
+        if len(image_articles) >= limit
+        else articles
+    )
+
+    if len(candidates) <= limit:
+        return candidates[:limit]
+
+    return random.sample(candidates, limit)
+
+
+async def get_public_market_news(
+    limit: int = PUBLIC_NEWS_LIMIT,
+) -> list[dict[str, Any]]:
+    global _public_news_cache
+    global _public_news_cached_at
+
+    safe_limit = max(1, min(limit, 20))
+    current_time = time.monotonic()
+
+    cache_is_valid = (
+        bool(_public_news_cache)
+        and current_time - _public_news_cached_at
+        < PUBLIC_NEWS_CACHE_TTL_SECONDS
+    )
+
+    if not cache_is_valid:
+        _public_news_cache = await fetch_news(
+            GENERAL_MARKET_QUERY,
+            page_size=40,
+        )
+
+        _public_news_cached_at = current_time
+
+    return _select_public_articles(
+        _public_news_cache,
+        safe_limit,
+    )
 
 
 def merge_news(
@@ -158,6 +220,7 @@ async def get_personalized_news(
         company_name = clean_query_value(
             interest.get("company_name", "")
         )
+
         ticker = clean_query_value(
             interest.get("ticker", "")
         )

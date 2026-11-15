@@ -78,6 +78,18 @@ type StockAnalysis = {
   signal: StockSignal;
 };
 
+const chartTick = {
+  fontSize: 12,
+  fill: "var(--muted-foreground)",
+};
+
+const chartTooltipStyle = {
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--border)",
+  borderRadius: "12px",
+  color: "var(--foreground)",
+};
+
 function formatCurrency(value?: number | null) {
   if (value === undefined || value === null) {
     return "N/A";
@@ -258,30 +270,30 @@ export default function StocksPage() {
       }}
     >
       <div className="space-y-8">
-        <div>
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-purple-600">
+        <section>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
             Technical workspace
           </p>
 
-          <h1 className="mt-2 text-4xl font-bold text-slate-900">
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground">
             Stock Analysis
           </h1>
 
-          <p className="mt-3 max-w-2xl text-slate-500">
+          <p className="mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
             Analyze price behavior, momentum, trend strength,
             volatility, and possible entry or exit signals.
           </p>
-        </div>
+        </section>
 
-        <div className="rounded-[2rem] border bg-white p-6 shadow-sm">
+        <section className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
           <form
             onSubmit={handleSearch}
             className="flex flex-col gap-3 md:flex-row"
           >
-            <div className="flex flex-1 items-center gap-3 rounded-xl border px-4 py-3">
+            <div className="flex flex-1 items-center gap-3 rounded-2xl border border-border bg-background px-4 py-3 transition focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-orange-100 dark:focus-within:ring-orange-500/10">
               <Search
                 size={19}
-                className="shrink-0 text-slate-400"
+                className="shrink-0 text-muted-foreground"
               />
 
               <input
@@ -292,7 +304,7 @@ export default function StocksPage() {
                   setError("");
                 }}
                 placeholder="Search a company or ticker..."
-                className="w-full bg-transparent outline-none"
+                className="w-full bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
               />
             </div>
 
@@ -301,34 +313,34 @@ export default function StocksPage() {
               disabled={
                 isSearching || query.trim().length < 2
               }
-              className="rounded-xl bg-purple-600 px-6 py-3 font-medium text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-2xl bg-primary px-6 py-3 font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSearching ? "Searching..." : "Analyze Stock"}
             </button>
           </form>
 
           {results.length > 0 && (
-            <div className="mt-3 overflow-hidden rounded-xl border">
+            <div className="mt-3 overflow-hidden rounded-2xl border border-border">
               {results.map((company, index) => (
                 <button
                   key={`${company.symbol}-${index}`}
                   type="button"
                   onClick={() => loadStockAnalysis(company)}
-                  className="flex w-full items-center justify-between border-b px-4 py-3 text-left last:border-b-0 hover:bg-purple-50"
+                  className="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left transition last:border-b-0 hover:bg-accent"
                 >
                   <div>
-                    <p className="font-medium text-slate-900">
+                    <p className="font-medium text-foreground">
                       {company.name}
                     </p>
 
                     {company.exchange && (
-                      <p className="text-sm text-slate-500">
+                      <p className="text-sm text-muted-foreground">
                         {company.exchange}
                       </p>
                     )}
                   </div>
 
-                  <span className="rounded-full bg-purple-100 px-3 py-1 text-sm font-semibold text-purple-700">
+                  <span className="rounded-full bg-accent px-3 py-1 text-sm font-semibold text-primary">
                     {company.symbol}
                   </span>
                 </button>
@@ -337,51 +349,50 @@ export default function StocksPage() {
           )}
 
           {error && (
-            <p className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-600">
+            <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-300">
               {error}
             </p>
           )}
-        </div>
+        </section>
 
         {!analysis && !isLoading && (
-          <div className="rounded-[2rem] border border-dashed bg-slate-50 p-16 text-center">
+          <section className="rounded-3xl border border-dashed border-border bg-muted p-16 text-center">
             <TrendingUp
               size={42}
-              className="mx-auto text-purple-500"
+              className="mx-auto text-primary"
             />
 
-            <h2 className="mt-5 text-xl font-semibold text-slate-900">
+            <h2 className="mt-5 text-xl font-semibold text-foreground">
               Choose a stock to begin
             </h2>
 
-            <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
               This workspace focuses only on technical stock
               behavior and does not duplicate your Research page.
             </p>
-          </div>
+          </section>
         )}
 
         {isLoading && (
-          <div className="rounded-[2rem] border bg-white p-16 text-center text-slate-500 shadow-sm">
+          <section className="rounded-3xl border border-border bg-card p-16 text-center text-muted-foreground shadow-sm">
             Loading technical analysis...
-          </div>
+          </section>
         )}
 
         {analysis && !isLoading && (
           <>
-            <section className="rounded-[2rem] bg-slate-950 p-6 text-white shadow-xl md:p-8">
-              <div className="flex flex-col justify-between gap-6 md:flex-row md:items-start">
+            <section className="relative overflow-hidden rounded-3xl border border-orange-100 bg-gradient-to-br from-white via-white to-orange-50 p-6 text-foreground shadow-sm dark:border-orange-900/30 dark:from-[#191715] dark:via-[#191715] dark:to-[#2a1b13] md:p-8">
+              <div className="relative z-10 flex flex-col justify-between gap-6 md:flex-row md:items-start">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.2em] text-slate-400">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
                     Technical signal
                   </p>
 
-                  <h2 className="mt-2 text-3xl font-bold">
-                    {analysis.quote.name ??
-                      analysis.ticker}
+                  <h2 className="mt-3 text-3xl font-semibold tracking-tight">
+                    {analysis.quote.name ?? analysis.ticker}
                   </h2>
 
-                  <p className="mt-1 text-slate-400">
+                  <p className="mt-1 text-muted-foreground">
                     {analysis.ticker}
                     {analysis.quote.exchange
                       ? ` · ${analysis.quote.exchange}`
@@ -390,7 +401,7 @@ export default function StocksPage() {
                 </div>
 
                 <div
-                  className={`rounded-2xl px-6 py-4 text-center ${ratingClasses(
+                  className={`rounded-2xl px-6 py-4 text-center shadow-sm ${ratingClasses(
                     analysis.signal.rating
                   )}`}
                 >
@@ -404,23 +415,21 @@ export default function StocksPage() {
                 </div>
               </div>
 
-              <div className="mt-8 grid gap-4 md:grid-cols-3">
-                <div className="rounded-2xl bg-white/10 p-5">
-                  <p className="text-sm text-slate-400">
+              <div className="relative z-10 mt-8 grid gap-4 md:grid-cols-3">
+                <div className="rounded-2xl border border-orange-100 bg-orange-50/80 p-5 dark:border-orange-900/30 dark:bg-white/10">
+                  <p className="text-sm text-muted-foreground">
                     Current price
                   </p>
 
                   <p className="mt-2 text-3xl font-bold">
-                    {formatCurrency(
-                      analysis.quote.price
-                    )}
+                    {formatCurrency(analysis.quote.price)}
                   </p>
 
                   <p
                     className={`mt-2 text-sm font-medium ${
                       (analysis.quote.changePercentage ?? 0) >= 0
-                        ? "text-emerald-300"
-                        : "text-red-300"
+                        ? "text-emerald-600 dark:text-emerald-300"
+                        : "text-red-600 dark:text-red-300"
                     }`}
                   >
                     {formatPercent(
@@ -430,8 +439,8 @@ export default function StocksPage() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl bg-white/10 p-5">
-                  <p className="text-sm text-slate-400">
+                <div className="rounded-2xl border border-orange-100 bg-orange-50/80 p-5 dark:border-orange-900/30 dark:bg-white/10">
+                  <p className="text-sm text-muted-foreground">
                     Potential entry range
                   </p>
 
@@ -445,13 +454,13 @@ export default function StocksPage() {
                     )}
                   </p>
 
-                  <p className="mt-2 text-sm text-slate-300">
+                  <p className="mt-2 text-sm text-muted-foreground">
                     Based on the 20-day trend.
                   </p>
                 </div>
 
-                <div className="rounded-2xl bg-white/10 p-5">
-                  <p className="text-sm text-slate-400">
+                <div className="rounded-2xl border border-orange-100 bg-orange-50/80 p-5 dark:border-orange-900/30 dark:bg-white/10">
+                  <p className="text-sm text-muted-foreground">
                     Risk level
                   </p>
 
@@ -459,19 +468,19 @@ export default function StocksPage() {
                     {analysis.signal.riskLevel}
                   </p>
 
-                  <p className="mt-2 text-sm text-slate-300">
+                  <p className="mt-2 text-sm text-muted-foreground">
                     Signal score: {analysis.signal.score}
                   </p>
                 </div>
               </div>
 
-              <p className="mt-6 max-w-3xl text-sm leading-6 text-slate-300">
-                {ratingDescription(
-                  analysis.signal.rating
-                )}{" "}
+              <p className="relative z-10 mt-6 max-w-3xl text-sm leading-6 text-muted-foreground">
+                {ratingDescription(analysis.signal.rating)}{" "}
                 This is an educational technical signal, not
                 financial advice or a guaranteed prediction.
               </p>
+
+              <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-orange-200/40 blur-3xl dark:bg-orange-500/10" />
             </section>
 
             <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -495,9 +504,7 @@ export default function StocksPage() {
 
               <MetricCard
                 label="Trading volume"
-                value={formatNumber(
-                  analysis.quote.volume
-                )}
+                value={formatNumber(analysis.quote.volume)}
               />
 
               <MetricCard
@@ -509,13 +516,13 @@ export default function StocksPage() {
             </section>
 
             <section className="grid gap-6 lg:grid-cols-3">
-              <div className="rounded-[2rem] border bg-white p-6 shadow-sm lg:col-span-2">
+              <div className="rounded-3xl border border-border bg-card p-6 shadow-sm lg:col-span-2">
                 <div className="mb-6">
-                  <h2 className="text-xl font-bold text-slate-900">
+                  <h2 className="text-xl font-semibold text-foreground">
                     Price trend
                   </h2>
 
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     Closing price compared with 20-day and
                     50-day moving averages.
                   </p>
@@ -528,7 +535,7 @@ export default function StocksPage() {
                   <LineChart data={chartData}>
                     <CartesianGrid
                       strokeDasharray="3 3"
-                      stroke="#e2e8f0"
+                      stroke="var(--border)"
                     />
 
                     <XAxis
@@ -536,17 +543,18 @@ export default function StocksPage() {
                       tickFormatter={(value) =>
                         String(value).slice(5)
                       }
-                      tick={{ fontSize: 12 }}
+                      tick={chartTick}
                     />
 
                     <YAxis
                       tickFormatter={(value) =>
                         `$${Number(value).toFixed(0)}`
                       }
-                      tick={{ fontSize: 12 }}
+                      tick={chartTick}
                     />
 
                     <Tooltip
+                      contentStyle={chartTooltipStyle}
                       formatter={(value, name) => [
                         `$${Number(value).toFixed(2)}`,
                         name === "close"
@@ -560,7 +568,7 @@ export default function StocksPage() {
                     <Line
                       type="monotone"
                       dataKey="close"
-                      stroke="#7c3aed"
+                      stroke="#df6b32"
                       strokeWidth={3}
                       dot={false}
                     />
@@ -568,7 +576,7 @@ export default function StocksPage() {
                     <Line
                       type="monotone"
                       dataKey="sma20"
-                      stroke="#f59e0b"
+                      stroke="#c98246"
                       strokeWidth={2}
                       dot={false}
                     />
@@ -576,33 +584,33 @@ export default function StocksPage() {
                     <Line
                       type="monotone"
                       dataKey="sma50"
-                      stroke="#0f766e"
+                      stroke="#64748b"
                       strokeWidth={2}
                       dot={false}
                     />
                   </LineChart>
                 </ResponsiveContainer>
 
-                <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
+                <div className="mt-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
                   <LegendDot
-                    color="bg-purple-600"
+                    color="bg-primary"
                     label="Close"
                   />
 
                   <LegendDot
-                    color="bg-amber-500"
+                    color="bg-orange-400"
                     label="SMA 20"
                   />
 
                   <LegendDot
-                    color="bg-teal-700"
+                    color="bg-slate-500"
                     label="SMA 50"
                   />
                 </div>
               </div>
 
-              <div className="rounded-[2rem] border bg-white p-6 shadow-sm">
-                <h2 className="text-xl font-bold text-slate-900">
+              <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+                <h2 className="text-xl font-semibold text-foreground">
                   Key indicators
                 </h2>
 
@@ -638,8 +646,7 @@ export default function StocksPage() {
                   <IndicatorRow
                     label="Annual volatility"
                     value={formatPercent(
-                      analysis.indicators
-                        .annualizedVolatility
+                      analysis.indicators.annualizedVolatility
                     )}
                   />
                 </div>
@@ -647,44 +654,44 @@ export default function StocksPage() {
             </section>
 
             <section className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-[2rem] border bg-white p-6 shadow-sm">
+              <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
                 <div className="flex items-center gap-3">
                   <TrendingUp
                     size={21}
                     className="text-emerald-600"
                   />
 
-                  <h2 className="text-xl font-bold text-slate-900">
+                  <h2 className="text-xl font-semibold text-foreground">
                     Entry timing signal
                   </h2>
                 </div>
 
-                <p className="mt-5 leading-7 text-slate-600">
+                <p className="mt-5 leading-7 text-muted-foreground">
                   {analysis.signal.entrySignal}
                 </p>
               </div>
 
-              <div className="rounded-[2rem] border bg-white p-6 shadow-sm">
+              <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
                 <div className="flex items-center gap-3">
                   <TrendingDown
                     size={21}
                     className="text-red-500"
                   />
 
-                  <h2 className="text-xl font-bold text-slate-900">
+                  <h2 className="text-xl font-semibold text-foreground">
                     Exit-risk signal
                   </h2>
                 </div>
 
-                <p className="mt-5 leading-7 text-slate-600">
+                <p className="mt-5 leading-7 text-muted-foreground">
                   {analysis.signal.exitSignal}
                 </p>
               </div>
             </section>
 
             <section className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-[2rem] border bg-white p-6 shadow-sm">
-                <h2 className="text-xl font-bold text-slate-900">
+              <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+                <h2 className="text-xl font-semibold text-foreground">
                   Momentum
                 </h2>
 
@@ -696,7 +703,7 @@ export default function StocksPage() {
                     <AreaChart data={chartData}>
                       <CartesianGrid
                         strokeDasharray="3 3"
-                        stroke="#e2e8f0"
+                        stroke="var(--border)"
                       />
 
                       <XAxis
@@ -704,21 +711,23 @@ export default function StocksPage() {
                         tickFormatter={(value) =>
                           String(value).slice(5)
                         }
-                        tick={{ fontSize: 12 }}
+                        tick={chartTick}
                       />
 
                       <YAxis
                         domain={[0, 100]}
-                        tick={{ fontSize: 12 }}
+                        tick={chartTick}
                       />
 
-                      <Tooltip />
+                      <Tooltip
+                        contentStyle={chartTooltipStyle}
+                      />
 
                       <Area
                         type="monotone"
                         dataKey="rsi"
-                        stroke="#db2777"
-                        fill="#fbcfe8"
+                        stroke="#df6b32"
+                        fill="#fed7aa"
                         strokeWidth={2}
                         connectNulls
                       />
@@ -727,8 +736,8 @@ export default function StocksPage() {
                 </div>
               </div>
 
-              <div className="rounded-[2rem] border bg-white p-6 shadow-sm">
-                <h2 className="text-xl font-bold text-slate-900">
+              <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
+                <h2 className="text-xl font-semibold text-foreground">
                   Trading activity
                 </h2>
 
@@ -740,7 +749,7 @@ export default function StocksPage() {
                     <BarChart data={chartData.slice(-60)}>
                       <CartesianGrid
                         strokeDasharray="3 3"
-                        stroke="#e2e8f0"
+                        stroke="var(--border)"
                       />
 
                       <XAxis
@@ -748,7 +757,7 @@ export default function StocksPage() {
                         tickFormatter={(value) =>
                           String(value).slice(5)
                         }
-                        tick={{ fontSize: 12 }}
+                        tick={chartTick}
                       />
 
                       <YAxis
@@ -757,14 +766,16 @@ export default function StocksPage() {
                             Number(value) / 1_000_000
                           ).toFixed(0)}M`
                         }
-                        tick={{ fontSize: 12 }}
+                        tick={chartTick}
                       />
 
-                      <Tooltip />
+                      <Tooltip
+                        contentStyle={chartTooltipStyle}
+                      />
 
                       <Bar
                         dataKey="volume"
-                        fill="#8b5cf6"
+                        fill="#df6b32"
                         radius={[4, 4, 0, 0]}
                       />
                     </BarChart>
@@ -773,8 +784,8 @@ export default function StocksPage() {
               </div>
             </section>
 
-            <section className="rounded-[2rem] border bg-slate-50 p-6">
-              <h2 className="text-xl font-bold text-slate-900">
+            <section className="rounded-3xl border border-border bg-muted p-6">
+              <h2 className="text-xl font-semibold text-foreground">
                 Why this signal was generated
               </h2>
 
@@ -783,7 +794,7 @@ export default function StocksPage() {
                   (reason, index) => (
                     <li
                       key={`${reason}-${index}`}
-                      className="rounded-xl bg-white p-4 text-sm text-slate-600 shadow-sm"
+                      className="rounded-2xl border border-border bg-card p-4 text-sm leading-6 text-muted-foreground shadow-sm"
                     >
                       {reason}
                     </li>
@@ -791,7 +802,7 @@ export default function StocksPage() {
                 )}
               </ul>
 
-              <p className="mt-6 text-xs leading-5 text-slate-500">
+              <p className="mt-6 text-xs leading-5 text-muted-foreground">
                 {analysis.signal.methodology}
               </p>
             </section>
@@ -810,10 +821,12 @@ function MetricCard({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border bg-white p-5 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <p className="text-sm text-muted-foreground">
+        {label}
+      </p>
 
-      <p className="mt-2 text-lg font-bold text-slate-900">
+      <p className="mt-2 text-lg font-bold text-foreground">
         {value}
       </p>
     </div>
@@ -828,12 +841,12 @@ function IndicatorRow({
   value: string;
 }) {
   return (
-    <div className="flex items-center justify-between border-b pb-4 last:border-b-0">
-      <span className="text-sm text-slate-500">
+    <div className="flex items-center justify-between border-b border-border pb-4 last:border-b-0">
+      <span className="text-sm text-muted-foreground">
         {label}
       </span>
 
-      <span className="font-semibold text-slate-900">
+      <span className="font-semibold text-foreground">
         {value}
       </span>
     </div>

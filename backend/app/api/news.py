@@ -1,6 +1,11 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status,
+)
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,13 +15,34 @@ from app.models.search_history import SearchHistory
 from app.models.user import User
 from app.models.watchlist_item import WatchlistItem
 from app.schemas.news import SearchInterestRequest
-from app.services.news_service import get_personalized_news
+from app.services.news_service import (
+    get_personalized_news,
+    get_public_market_news,
+)
 
 
 router = APIRouter(
     prefix="/api/news",
     tags=["News"],
 )
+
+
+@router.get("/public-feed")
+async def get_public_news_feed():
+    try:
+        articles = await get_public_market_news()
+
+        return {
+            "articles": articles,
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
+            detail="Public news is temporarily unavailable.",
+        ) from error
 
 
 @router.post("/interests")
@@ -64,7 +90,9 @@ async def get_personalized_news_feed(
 ):
     history_result = await db.scalars(
         select(SearchHistory)
-        .where(SearchHistory.user_id == current_user.id)
+        .where(
+            SearchHistory.user_id == current_user.id
+        )
         .order_by(desc(SearchHistory.searched_at))
         .limit(10)
     )
