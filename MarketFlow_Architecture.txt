@@ -1,0 +1,1288 @@
+MARKETFLOW PROJECT ARCHITECTURE
+================================
+
+Document purpose
+----------------
+
+This document explains how the MarketFlow application is organized, how the
+frontend and backend communicate, how authentication works, how market news is
+retrieved, how the AI assistant handles documents, and how the main user flows
+move through the system.
+
+MarketFlow is an AI-powered equity research platform built as a full-stack
+application. The frontend is a React application using Next.js and TypeScript.
+The backend is a Python FastAPI application that provides authentication,
+financial data, news, reports, document processing, and AI assistant APIs.
+
+
+1. HIGH-LEVEL SYSTEM OVERVIEW
+-----------------------------
+
+The application has five major parts:
+
+1. React and Next.js frontend
+   - Displays the user interface.
+   - Handles navigation, forms, loading states, themes, and client-side API
+     requests.
+   - Provides both public and authenticated experiences.
+
+2. FastAPI backend
+   - Exposes REST API endpoints.
+   - Authenticates users.
+   - Validates request data.
+   - Applies authorization and ownership checks.
+   - Coordinates database access, financial services, news services, reports,
+     document extraction, and AI generation.
+
+3. Database
+   - Stores users and authentication-related data.
+   - Stores search history and watchlist items.
+   - Stores saved reports.
+   - Stores assistant conversations and messages.
+   - Maintains relationships between users, conversations, messages, and
+     attachments.
+
+4. External data and AI providers
+   - NewsAPI supplies public and personalized financial news.
+   - Financial data providers supply company and stock information.
+   - Gemini is the primary AI provider for assistant responses.
+   - OpenAI is used as a fallback when the primary Gemini request is not
+     available.
+
+5. Local infrastructure and containers
+   - Docker Desktop provides the local container runtime.
+   - Redis runs in a Docker container for shared caching or other backend
+     infrastructure that is configured to use it.
+   - An n8n container is also present in the local Docker environment as a
+     separate automation service. It is not treated as a required MarketFlow
+     runtime component unless the backend is explicitly connected to it.
+
+6. Browser session and public access layer
+   - Visitors can view the public dashboard and public market news without an
+     account.
+   - Research tools require authentication.
+   - An authenticated session is configured to expire after one hour unless the
+     user logs out sooner.
+
+
+2. HIGH-LEVEL REQUEST FLOW
+--------------------------
+
+Browser
+   |
+   v
+Next.js / React frontend
+   |
+   | Axios requests with credentials enabled
+   v
+FastAPI backend
+   |
+   +--> Authentication services
+   +--> Database services
+   +--> Company and stock services
+   +--> News service --> NewsAPI
+   +--> Report services
+   +--> Document service --> PDF/DOCX extraction
+   +--> RAG services --> document chunk retrieval
+   +--> AI services --> Gemini or OpenAI fallback
+   +--> Redis container when a Redis-backed feature is enabled
+
+The frontend never calls Gemini, OpenAI, NewsAPI, or financial data providers
+directly. Those integrations are kept in the backend so API keys remain private
+and business rules stay in one place.
+
+
+3. TECHNOLOGY STACK
+-------------------
+
+Frontend
+--------
+
+- React: component-based user interface library.
+- Next.js: React framework used for routing, application structure, and the
+  frontend runtime.
+- TypeScript: type safety for React components, API responses, and application
+  state.
+- Tailwind CSS: utility-based styling.
+- shadcn/ui and Tailwind utilities: reusable interface patterns.
+- Lucide Icons: interface icons.
+- Axios: HTTP client used to call the FastAPI backend.
+- remark-math, rehype-katex, and KaTeX: mathematical formatting in assistant
+  responses.
+
+Backend
+-------
+
+- Python: backend programming language.
+- FastAPI: REST API framework.
+- SQLAlchemy: database models and queries.
+- Pydantic: request and response validation.
+- Async SQLAlchemy sessions: asynchronous database access.
+- httpx: asynchronous HTTP requests to external services.
+- pypdf: PDF text extraction.
+- python-docx: DOCX text extraction.
+
+External services
+-----------------
+
+- NewsAPI: financial and business news.
+- Gemini API: primary AI assistant provider.
+- OpenAI API: fallback AI provider.
+
+Local infrastructure
+--------------------
+
+- Docker Desktop: local container runtime.
+- Redis: in-memory data store available through the local Docker environment.
+- n8n: separate workflow-automation container visible in the local Docker
+  environment.
+- Financial market data provider: company information, prices, and stock
+  analysis data.
+
+
+4. REPOSITORY STRUCTURE
+-----------------------
+
+MarketFlow/
+|
+|-- backend/
+|   |-- app/
+|   |   |-- api/
+|   |   |   |-- auth.py
+|   |   |   |-- assistant.py
+|   |   |   |-- assistant_memory.py
+|   |   |   |-- news.py
+|   |   |   |-- reports.py
+|   |   |   |-- watchlist.py
+|   |   |   |-- company.py
+|   |   |   |-- stock_analysis.py
+|   |   |   `-- other API routers
+|   |   |
+|   |   |-- core/
+|   |   |   |-- security.py
+|   |   |   `-- application configuration and security helpers
+|   |   |
+|   |   |-- db/
+|   |   |   `-- database.py
+|   |   |
+|   |   |-- models/
+|   |   |   |-- user.py
+|   |   |   |-- search_history.py
+|   |   |   |-- watchlist_item.py
+|   |   |   |-- report.py
+|   |   |   |-- assistant_conversation.py
+|   |   |   |-- assistant_message.py
+|   |   |   `-- assistant attachment models
+|   |   |
+|   |   |-- rag/
+|   |   |   `-- document chunking and relevant-context retrieval
+|   |   |
+|   |   |-- schemas/
+|   |   |   |-- assistant.py
+|   |   |   |-- assistant_memory.py
+|   |   |   |-- news.py
+|   |   |   `-- other Pydantic schemas
+|   |   |
+|   |   |-- services/
+|   |   |   |-- assistant_service.py
+|   |   |   |-- document_service.py
+|   |   |   |-- news_service.py
+|   |   |   |-- openai_service.py
+|   |   |   |-- company_service.py
+|   |   |   |-- stock_analysis_service.py
+|   |   |   |-- fmp_client.py
+|   |   |   |-- report_export_service.py
+|   |   |   |-- sec_service.py
+|   |   |   `-- other business services
+|   |   |
+|   |   `-- main.py
+|   |
+|   |-- requirements.txt
+|   |-- .env
+|   `-- venv/
+|
+|-- frontend/
+|   |-- app/
+|   |   |-- dashboard/page.tsx
+|   |   |-- login/page.tsx
+|   |   |-- signup/page.tsx
+|   |   |-- forgot-password/page.tsx
+|   |   |-- reset-password/page.tsx
+|   |   |-- research/page.tsx
+|   |   |-- stocks/page.tsx
+|   |   |-- compare/page.tsx
+|   |   |-- watchlist/page.tsx
+|   |   |-- reports/page.tsx
+|   |   |-- settings/page.tsx
+|   |   |-- assistant/page.tsx
+|   |   |-- layout.tsx
+|   |   `-- globals.css
+|   |
+|   |-- components/
+|   |   |-- assistant/
+|   |   |-- auth/
+|   |   |-- company/
+|   |   |-- charts/
+|   |   |-- layout/
+|   |   |   |-- DashboardLayout.tsx
+|   |   |   |-- Navbar.tsx
+|   |   |   `-- Sidebar.tsx
+|   |   |-- news/
+|   |   |   |-- NewsFeed.tsx
+|   |   |   `-- PublicNewsPreview.tsx
+|   |   |-- theme/
+|   |   |   `-- ThemeInitializer.tsx
+|   |   `-- ui/
+|   |
+|   |-- lib/
+|   |   `-- api.ts
+|   |
+|   |-- package.json
+|   `-- .env.local
+|
+`-- README.md
+
+
+5. FRONTEND ARCHITECTURE
+------------------------
+
+The frontend is a React and TypeScript application organized around Next.js
+routes and reusable components.
+
+5.1 Next.js application routes
+------------------------------
+
+The app directory contains the main page routes:
+
+- /              Redirects visitors to /dashboard.
+- /dashboard     Public dashboard and authenticated personalized dashboard.
+- /login         Login form.
+- /signup        Account creation form.
+- /forgot-password
+                 Password reset request form.
+- /reset-password
+                 Password reset completion form.
+- /research      Company search and research tools.
+- /stocks        Technical stock analysis.
+- /compare       Company comparison.
+- /watchlist     Authenticated watchlist management.
+- /reports       Saved report management and downloads.
+- /settings      Account and security settings.
+- /assistant     Authenticated AI assistant workspace.
+
+5.2 Root layout
+---------------
+
+frontend/app/layout.tsx is the root layout for the application.
+
+It is responsible for:
+
+- Loading global CSS.
+- Loading Geist fonts.
+- Registering KaTeX styles.
+- Setting page metadata.
+- Initializing the stored light or dark theme before the page renders.
+- Rendering ThemeInitializer.
+- Rendering the application children.
+
+The theme initializer reads the marketflow-theme value from localStorage and
+adds the dark class to the HTML element when dark mode is selected.
+
+5.3 Global styling
+------------------
+
+frontend/app/globals.css defines:
+
+- Global Tailwind imports.
+- Light-mode design tokens.
+- Dark-mode design tokens.
+- Orange primary color.
+- Neutral background, card, border, and text colors.
+- Shared border and focus-ring behavior.
+- Compatibility styles for older purple and slate utility classes.
+- Dark-mode overrides for inputs, cards, text, and backgrounds.
+
+The design system uses orange as the main action color while keeping the rest
+of the interface restrained with white, warm gray, charcoal, and navy tones.
+
+5.4 DashboardLayout
+-------------------
+
+frontend/components/layout/DashboardLayout.tsx is the shared shell for the
+main application pages.
+
+It coordinates:
+
+- Sidebar.
+- Navbar.
+- Main page content.
+- Authenticated assistant button and panel.
+- Guest authentication prompt behavior.
+- Loading and current-user state.
+
+The layout accepts an assistantContext object. Pages use this object to tell
+the assistant which page is open, what information is available, and what
+actions the assistant can perform.
+
+The layout also supports public pages through allowGuest. On a guest page it:
+
+- Allows the public dashboard to render.
+- Keeps protected page content hidden.
+- Opens AuthPromptModal when a guest tries to use a protected feature.
+- Shows Login and Sign up actions in the header.
+
+5.5 Navbar
+----------
+
+The navbar displays different controls depending on authentication state.
+
+Authenticated user:
+
+- Displays the user's name.
+- Displays user initials.
+- Displays a Log out button.
+
+Guest user:
+
+- Displays a Log in button.
+- Displays a Sign up button.
+
+The navbar calls the backend logout endpoint and then redirects to the login
+page when the user logs out.
+
+5.6 Sidebar
+-----------
+
+The sidebar contains navigation links for:
+
+- Dashboard.
+- Research.
+- MarketFlow Bot.
+- Stock Analysis.
+- Compare.
+- Watchlist.
+- Reports.
+- Settings.
+
+Guests can open Dashboard. The other links are intercepted and display the
+authentication prompt instead of allowing access to protected pages.
+
+5.7 Public dashboard
+--------------------
+
+The dashboard supports two modes:
+
+Guest mode:
+
+- Shows a public market news feed.
+- Does not require a user account.
+- Does not use personal search history or watchlist information.
+- Prompts the visitor to log in or sign up when protected tools are selected.
+
+Authenticated mode:
+
+- Shows personalized news.
+- Uses the user's search activity and watchlist.
+- Allows access to the research workspace and assistant.
+
+5.8 API client
+--------------
+
+frontend/lib/api.ts contains the Axios instance and typed API functions.
+
+The Axios instance:
+
+- Uses NEXT_PUBLIC_API_URL as its base URL.
+- Sends credentials with requests.
+- Defaults to JSON requests.
+- Handles unauthorized responses through a response interceptor.
+
+The interceptor redirects authenticated pages to /login when a protected API
+request returns HTTP 401. It does not redirect for:
+
+- Login requests.
+- Signup requests.
+- Password reset requests.
+- Authentication pages.
+- The /api/auth/me session check.
+
+This exception is important because a guest should be allowed to load the
+public dashboard without being immediately redirected to login.
+
+The API client exposes functions for:
+
+- Authentication.
+- Company search.
+- Watchlists.
+- Search interest history.
+- Personalized news.
+- Public news.
+- Reports.
+- Assistant conversations.
+- Assistant messages.
+- Document uploads.
+
+
+6. AUTHENTICATION AND AUTHORIZATION
+-----------------------------------
+
+6.1 Authentication flow
+-----------------------
+
+1. A user submits the login or signup form in the React frontend.
+2. The frontend sends the credentials to FastAPI.
+3. The backend validates the credentials.
+4. The backend creates an authenticated session or token.
+5. The frontend redirects the user to /dashboard.
+6. DashboardLayout calls /api/auth/me to load the current user.
+7. Protected pages use the authenticated user state before showing private
+   content.
+
+6.2 One-hour session
+--------------------
+
+The backend security configuration sets the authentication token expiration to
+one hour.
+
+The practical behavior is:
+
+- A successful login remains valid for approximately one hour.
+- The user can use protected pages during that session.
+- Logging out invalidates the active login through the logout endpoint.
+- After expiration, protected API calls return HTTP 401.
+- The frontend redirects the user to /login after an expired protected session.
+
+If the token expiration value is changed, the backend must be restarted and the
+user should log in again so a new token is issued with the new expiration.
+
+6.3 User ownership checks
+-------------------------
+
+Private resources are queried using both the resource ID and the current user's
+ID. This prevents one user from accessing another user's:
+
+- Conversations.
+- Messages.
+- Watchlist items.
+- Search history.
+- Reports.
+- Account settings.
+
+6.4 Guest access
+----------------
+
+The public dashboard is intentionally available without authentication. Guest
+access is limited to public content and does not expose personal data or
+protected research APIs.
+
+
+7. BACKEND ARCHITECTURE
+-----------------------
+
+The backend follows a layered FastAPI structure.
+
+API routers
+-----------
+
+Routers receive HTTP requests, validate input, obtain the current user and
+database session, call a service, and return a response.
+
+Schemas
+-------
+
+Pydantic schemas define the accepted request shapes and response shapes. They
+prevent invalid or oversized data from moving into the service layer.
+
+Models
+------
+
+SQLAlchemy models define database tables, columns, relationships, and cascade
+behavior.
+
+Services
+--------
+
+Services contain application logic and external integrations. Keeping logic in
+services prevents routers from becoming large and difficult to test.
+
+Database layer
+--------------
+
+The database module creates the SQLAlchemy engine, Base class, and asynchronous
+database session dependency used by API routes.
+
+Core layer
+----------
+
+The core layer contains security and application-level configuration such as
+token creation, token expiration, password handling, and environment settings.
+
+
+8. BACKEND API GROUPS
+---------------------
+
+Authentication
+--------------
+
+- POST /api/auth/signup
+  Creates a user account and authenticates the new user.
+
+- POST /api/auth/login
+  Validates email and password and creates an authenticated session.
+
+- POST /api/auth/logout
+  Logs the current user out.
+
+- GET /api/auth/me
+  Returns the currently authenticated user.
+
+- PATCH /api/auth/me
+  Updates the authenticated user's name.
+
+- PATCH /api/auth/me/email
+  Updates the email after validating the current password.
+
+- POST /api/auth/forgot-password
+  Starts the password reset process.
+
+- POST /api/auth/reset-password
+  Sets a new password using a valid reset token.
+
+Company research
+----------------
+
+- GET /api/company/search
+  Searches for companies using a company name or ticker.
+
+The frontend uses the selected company to open research views and record search
+interest for future news personalization.
+
+News
+----
+
+- POST /api/news/interests
+  Stores or updates the user's interest in a company.
+
+- GET /api/news/feed
+  Returns personalized news for the authenticated user.
+
+- GET /api/news/public-feed
+  Returns public market news without requiring authentication.
+
+Watchlist
+---------
+
+- GET /api/watchlist
+  Returns the authenticated user's watchlist.
+
+- POST /api/watchlist
+  Adds a ticker to the authenticated user's watchlist.
+
+- DELETE /api/watchlist/{ticker}
+  Removes a ticker from the authenticated user's watchlist.
+
+Reports
+-------
+
+- GET /api/reports
+  Lists saved reports for the current user.
+
+- GET /api/reports/{report_id}
+  Returns one saved report.
+
+- POST /api/reports
+  Creates a saved report.
+
+- DELETE /api/reports/{report_id}
+  Deletes a saved report owned by the current user.
+
+- GET /api/reports/{report_id}/download
+  Downloads a report as PDF, DOCX, or JSON.
+
+Assistant documents
+-------------------
+
+- POST /api/assistant/documents
+  Accepts a PDF or DOCX upload and extracts readable text.
+
+Supported document rules:
+
+- PDF and DOCX files are supported.
+- Maximum upload size is 10 MB.
+- Empty files are rejected.
+- Documents with no readable text are rejected.
+- Extracted text is limited to the configured maximum character count.
+
+Assistant chat
+--------------
+
+- POST /api/assistant/chat
+  Generates an AI answer using the page context, conversation context, and
+  relevant retrieved document content.
+
+Assistant conversations
+-----------------------
+
+- GET /api/assistant/conversations
+  Lists conversations for the current user.
+
+- POST /api/assistant/conversations
+  Creates a new conversation.
+
+- GET /api/assistant/conversations/{conversation_id}
+  Loads a conversation and its messages.
+
+- DELETE /api/assistant/conversations/{conversation_id}
+  Deletes an owned conversation.
+
+- POST /api/assistant/conversations/{conversation_id}/messages
+  Stores a user or assistant message in the conversation.
+
+
+9. DATABASE ARCHITECTURE
+------------------------
+
+User
+----
+
+Stores account identity and authentication-related information.
+
+Important relationships:
+
+- A user can have many search history records.
+- A user can have many watchlist items.
+- A user can have many reports.
+- A user can have many assistant conversations.
+
+SearchHistory
+-------------
+
+Stores the companies a user has searched for and the latest time each company
+was searched.
+
+The news service uses this table to personalize the user's feed.
+
+WatchlistItem
+------------
+
+Stores a ticker saved by a user. Watchlist companies are also used as news
+interests.
+
+Report
+------
+
+Stores the ticker, company name, report title, report type, report data, and
+creation time for a saved equity research report.
+
+AssistantConversation
+---------------------
+
+Stores a conversation title, owning user, creation time, and last update time.
+
+AssistantMessage
+----------------
+
+Stores the conversation ID, role, message content, and creation time.
+
+Roles are limited to:
+
+- user
+- assistant
+
+Assistant attachments
+---------------------
+
+Uploaded document metadata is connected to the relevant assistant message or
+conversation. The attachment metadata allows the frontend to display the file
+name, file type, page count, and attachment state in the chat interface.
+
+Cascade behavior
+----------------
+
+When an owned conversation is deleted, its related messages and attachments are
+removed according to the configured database relationships.
+
+
+10. NEWS ARCHITECTURE
+---------------------
+
+10.1 NewsAPI client
+------------------
+
+backend/app/services/news_service.py contains the external NewsAPI integration.
+
+The service:
+
+- Sends asynchronous HTTP requests.
+- Uses a configurable timeout.
+- Sends the NewsAPI key only from the backend.
+- Removes removed articles.
+- Removes articles without titles or URLs.
+- Deduplicates articles by URL.
+- Normalizes article data into the frontend's NewsArticle shape.
+
+Normalized article fields include:
+
+- title
+- publisher
+- publishedDate
+- url
+- image
+- summary
+
+10.2 Personalized feed
+----------------------
+
+For an authenticated user:
+
+1. Load the most recent search history records.
+2. Load the user's watchlist items.
+3. Combine both sources into a unique company-interest collection.
+4. Build a financial-news query from company names and tickers.
+5. Fetch company-related articles.
+6. Fetch general market articles.
+7. Merge the result sets while removing duplicate URLs.
+8. Return the normalized articles to the frontend.
+
+The service limits the number of interests used in a query so the request does
+not become unnecessarily large.
+
+10.3 Public feed
+----------------
+
+For guests:
+
+1. Request general financial and market news.
+2. Prefer articles that contain usable images.
+3. Remove duplicate and invalid articles.
+4. Select a limited set of public articles.
+5. Cache the result for a short period.
+6. Return the articles through /api/news/public-feed.
+
+The public feed is not personalized because there is no authenticated user,
+search history, or watchlist available.
+
+The cache reduces unnecessary NewsAPI requests and helps prevent the public
+dashboard from making a new external request on every browser refresh.
+
+10.4 Frontend news rendering
+----------------------------
+
+PublicNewsPreview.tsx:
+
+- Calls getPublicNewsFeed.
+- Shows loading placeholders while the request is pending.
+- Displays a featured article.
+- Displays additional article cards.
+- Uses the article image when available.
+- Uses a branded fallback when an image is unavailable.
+- Opens the original article URL in a new browser tab.
+- Shows an unavailable state when the backend cannot retrieve news.
+
+NewsFeed.tsx handles the authenticated personalized version of the feed.
+
+
+11. AI ASSISTANT ARCHITECTURE
+-----------------------------
+
+The MarketFlow Bot is separated into frontend, API, service, memory, document,
+and retrieval layers.
+
+11.1 Frontend assistant
+-----------------------
+
+The assistant interface is responsible for:
+
+- Opening and closing the assistant workspace.
+- Creating conversations.
+- Loading previous conversations.
+- Rendering user and assistant messages.
+- Uploading documents.
+- Showing attachment cards in the conversation.
+- Sending questions.
+- Rendering Markdown responses.
+- Rendering mathematical expressions with KaTeX.
+- Showing errors and loading states.
+
+11.2 Page context
+-----------------
+
+Each page can provide an assistantContext object containing information such as:
+
+- Current page.
+- Page title.
+- Current section.
+- Available data.
+- Available user actions.
+- Page-specific assistant instructions.
+
+This allows the assistant to understand the current screen without requiring
+the user to repeat basic page information.
+
+11.3 Conversation memory
+------------------------
+
+Conversation memory is persisted through the assistant conversation endpoints.
+
+The flow is:
+
+1. Create or select a conversation.
+2. Load the stored messages.
+3. Display the existing messages in the frontend.
+4. Save each new user message.
+5. Generate the assistant response.
+6. Save the assistant response.
+7. Reload or update the conversation state in the frontend.
+
+11.4 Document upload and extraction
+-----------------------------------
+
+The document service accepts PDF and DOCX files.
+
+For PDFs:
+
+- Read the file with pypdf.
+- Extract text page by page.
+- Preserve page labels such as [Page 1].
+- Return the page count.
+
+For DOCX files:
+
+- Read paragraphs.
+- Read table rows and cells.
+- Combine readable text into a single extracted document.
+
+Before returning the document:
+
+- Validate the extension.
+- Validate the file size.
+- Reject empty files.
+- Reject files without readable text.
+- Truncate text above the configured extraction limit.
+
+11.5 Document chunking and retrieval
+------------------------------------
+
+Long documents are not sent in their entirety with every question.
+
+The intended workflow is:
+
+1. Extract document text once.
+2. Split the text into smaller chunks.
+3. Keep chunk metadata such as document identity and page information.
+4. Compare the user's question with the available chunks.
+5. Select only the most relevant chunks.
+6. Send the selected context to the AI model.
+7. Generate the answer from the selected context.
+
+This is the main token-usage improvement in the document workflow. It avoids
+resending the full document for every follow-up question.
+
+11.6 AI provider fallback
+-------------------------
+
+The assistant first attempts to use Gemini. If Gemini is unavailable because of
+quota, rate limits, or another handled provider failure, the backend switches to
+the OpenAI fallback path.
+
+The frontend receives one assistant answer and does not need to know which
+provider produced it.
+
+11.7 Response formatting
+------------------------
+
+The assistant is instructed to return clean Markdown. The frontend renders:
+
+- Headings.
+- Bulleted and numbered lists.
+- Bold text.
+- Tables when appropriate.
+- Inline math using $...$.
+- Standalone equations using $$...$$.
+
+Currency values are written as text such as USD 84 million so they are not
+mistaken for inline mathematical expressions.
+
+
+12. TOKEN USAGE AND PERFORMANCE
+-------------------------------
+
+The application reduces unnecessary token usage in several ways:
+
+- Document text is extracted once during upload.
+- Documents are chunked instead of fully resent for every question.
+- Only relevant chunks are included in follow-up requests.
+- Page context is limited to the current screen's useful information.
+- Search and watchlist interests are limited before building news queries.
+- Public news is cached for a short period.
+- News articles are deduplicated before being returned.
+- Conversation history should remain bounded when building AI context.
+- The frontend does not send API keys or call AI providers directly.
+
+Redis and in-memory caching
+---------------------------
+
+Redis can provide shared caching when the backend is configured with a Redis
+client and Redis connection URL. A Redis-backed cache is useful when multiple
+backend processes need to share cached news, rate-limit counters, temporary
+task state, or other short-lived data.
+
+The current public-news implementation that was previously shared uses a
+Python in-process cache. That cache exists only inside the running backend
+process. The Redis container is available locally, but it does not automatically
+replace the Python cache unless the backend explicitly connects to Redis and
+uses it in the news service.
+
+This distinction matters:
+
+- In-process cache: simple and useful during local development, but each backend
+  process has its own cache.
+- Redis cache: shared between backend processes and more appropriate for a
+  production deployment with multiple workers.
+
+The system prompt and page instructions may still be included with each AI
+request because the model needs those instructions for every independent
+generation. The main savings come from not resending the entire document and
+from limiting unnecessary conversation and page context.
+
+
+13. MAIN USER FLOWS
+-------------------
+
+13.1 Guest opens the application
+-------------------------------
+
+1. The visitor opens the root URL.
+2. Next.js redirects / to /dashboard.
+3. DashboardLayout checks /api/auth/me.
+4. The session check returns unauthenticated.
+5. The dashboard remains visible because it allows guest access.
+6. The header displays Log in and Sign up.
+7. PublicNewsPreview calls /api/news/public-feed.
+8. Public market articles are displayed.
+
+13.2 Guest clicks a protected feature
+-------------------------------------
+
+1. The guest clicks Research, Stock Analysis, Compare, Watchlist, Reports,
+   Settings, or MarketFlow Bot.
+2. Sidebar prevents the protected navigation.
+3. AuthPromptModal opens.
+4. The guest can choose Log in or Sign up.
+
+13.3 User logs in
+-----------------
+
+1. The user opens /login.
+2. The user enters an email and password.
+3. The frontend sends POST /api/auth/login.
+4. The backend validates the credentials.
+5. The backend creates the one-hour session.
+6. The frontend redirects to /dashboard.
+7. DashboardLayout loads the authenticated user.
+8. Personalized news and protected navigation become available.
+
+13.4 User searches for a company
+--------------------------------
+
+1. The user enters a company name or ticker.
+2. The frontend calls /api/company/search.
+3. The user selects a company.
+4. The application can record the selection through
+   POST /api/news/interests.
+5. The company can then be used in research, stock analysis, and future news
+   personalization.
+
+13.5 User views stock analysis
+------------------------------
+
+1. The authenticated user opens Stock Analysis.
+2. The user selects or searches for a company.
+3. The backend retrieves current market data.
+4. The stock analysis service calculates technical indicators and rule-based
+   conditions.
+5. The frontend displays price information, trend information, risk level,
+   indicators, and the available educational signal.
+6. The interface explains that the result is not guaranteed financial advice.
+
+13.6 User asks an AI question
+-----------------------------
+
+1. The user selects or creates a conversation.
+2. The frontend saves the user message.
+3. The frontend sends the question and relevant context to /api/assistant/chat.
+4. The backend builds the AI request.
+5. If a document is attached, relevant chunks are selected.
+6. Gemini is attempted first.
+7. OpenAI is used if the configured fallback condition is triggered.
+8. The answer is returned to the frontend.
+9. The assistant message is saved in the conversation.
+10. The frontend renders the answer as Markdown.
+
+13.7 User uploads a document
+----------------------------
+
+1. The user selects a PDF or DOCX file.
+2. The frontend creates a multipart form request.
+3. The backend validates and reads the file.
+4. Text is extracted and prepared for chunking.
+5. Attachment metadata is returned to the frontend.
+6. The file appears as an attachment card in the chat.
+7. Follow-up questions use relevant document context instead of sending the
+   entire file every time.
+
+13.8 User saves and downloads a report
+--------------------------------------
+
+1. The user creates a report from company research.
+2. The frontend sends the report data to the backend.
+3. The backend validates ownership and saves the report.
+4. The Reports page loads the user's saved reports.
+5. The user selects PDF, DOCX, or JSON.
+6. The backend generates the selected format.
+7. The frontend downloads the returned file.
+
+
+14. SECURITY MODEL
+------------------
+
+The application follows these security principles:
+
+- API keys are stored in backend environment variables.
+- The frontend never receives NewsAPI, Gemini, or OpenAI secret keys.
+- Protected endpoints require the current-user dependency.
+- User-owned data is filtered by the authenticated user ID.
+- Uploaded files have extension and size validation.
+- Assistant message content has a maximum accepted length.
+- Authentication tokens have a one-hour expiration.
+- Password operations are handled by the backend.
+- The frontend redirects expired protected sessions to login.
+- The public feed does not expose personal user data.
+
+Never commit any of the following files or values:
+
+- backend/.env
+- frontend/.env.local when it contains secrets
+- API keys
+- Passwords
+- Database credentials
+- Secret signing keys
+
+
+15. ENVIRONMENT CONFIGURATION
+-----------------------------
+
+Backend environment values include the variables required by the current
+backend services. Typical values include:
+
+DATABASE_URL=your_database_url
+SECRET_KEY=your_secret_key
+NEWS_API_KEY=your_newsapi_key
+GEMINI_API_KEY=your_gemini_api_key
+OPENAI_API_KEY=your_openai_api_key
+
+If Redis-backed functionality is enabled in the backend, the connection is
+typically configured with a value similar to:
+
+REDIS_URL=redis://localhost:6379/0
+
+The exact variable name must match the backend code. Do not add REDIS_URL only
+because the container is running; the application must also create a Redis
+client and use it in the relevant service.
+
+Frontend environment values include:
+
+NEXT_PUBLIC_API_URL=http://localhost:8000
+
+The exact environment variable names in the local .env files must match the
+names read by the backend and frontend source code.
+
+
+16. LOCAL DEVELOPMENT
+---------------------
+
+Docker and Redis
+----------------
+
+The local Docker environment currently includes a Redis container based on the
+redis:8-alpine image. Docker Desktop maps:
+
+- Host port 6379 to container port 6379.
+
+The backend can connect to it from the host using:
+
+redis://localhost:6379/0
+
+If the backend itself runs inside Docker, it should normally connect using the
+Redis service name from docker-compose rather than localhost. For example, the
+connection may use a hostname such as redis, depending on the compose service
+name.
+
+The n8n container shown in Docker Desktop is a separate optional automation
+service. It should only be documented as part of the MarketFlow request flow if
+the application sends requests to n8n or receives workflows from it.
+
+Backend setup
+-------------
+
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --port 8000
+
+Frontend setup
+--------------
+
+cd frontend
+npm install
+npm run dev
+
+Development URLs
+----------------
+
+- Frontend: http://localhost:3000
+- Backend:  http://localhost:8000
+
+After changing backend Python files, restart the backend if the reload process
+does not pick up the change. After changing frontend environment variables,
+restart the Next.js development server.
+
+
+17. TESTING CHECKLIST
+---------------------
+
+Authentication
+--------------
+
+- Create a new account.
+- Log out and confirm the header changes to Log in and Sign up.
+- Log in again.
+- Confirm protected navigation becomes available.
+- Confirm an expired or invalid session redirects to login.
+
+Guest experience
+----------------
+
+- Open /dashboard while logged out.
+- Confirm public news loads.
+- Click each protected sidebar item.
+- Confirm the authentication prompt opens.
+- Confirm Dashboard remains available to guests.
+
+News
+----
+
+- Confirm /api/news/public-feed returns articles.
+- Confirm article images display when available.
+- Confirm article links open the source article.
+- Search for a company while logged in.
+- Confirm the personalized feed uses the search interest.
+
+Assistant
+---------
+
+- Create a conversation.
+- Send a short question.
+- Confirm the response is saved after refresh.
+- Upload a PDF.
+- Upload a DOCX.
+- Ask a question about the uploaded document.
+- Confirm follow-up questions use relevant document context.
+- Test the fallback provider when the primary provider is unavailable.
+
+Reports and account
+-------------------
+
+- Create a report.
+- Open the Reports page.
+- Download the report as PDF, DOCX, and JSON.
+- Update the profile name.
+- Test email and password settings.
+- Test light and dark mode.
+
+
+18. ERROR HANDLING
+------------------
+
+Frontend errors
+---------------
+
+The frontend should show useful loading, empty, and error states instead of
+leaving blank panels. API errors are rejected by Axios and handled by the
+calling component or the shared authentication interceptor.
+
+Backend errors
+--------------
+
+The backend uses HTTP status codes and structured error details for invalid
+requests, missing resources, unauthorized access, unavailable external
+services, and document extraction failures.
+
+External provider failures
+--------------------------
+
+- NewsAPI failures produce an unavailable news state.
+- Gemini failures can trigger the OpenAI fallback.
+- If all AI providers fail, the assistant reports that it is temporarily
+  unavailable instead of inventing an answer.
+
+
+19. DESIGN AND UX PRINCIPLES
+----------------------------
+
+- The public dashboard should be useful before account creation.
+- Protected features should explain why authentication is required.
+- Financial information should be presented clearly and cautiously.
+- AI answers should be concise and readable.
+- Loading states should preserve the layout and reduce visual jumping.
+- Empty states should explain what the user can do next.
+- Light and dark mode should preserve contrast and hierarchy.
+- Orange is reserved primarily for actions, focus states, selected navigation,
+  and important interface accents.
+
+
+20. KNOWN LIMITATIONS
+---------------------
+
+- News availability depends on the NewsAPI plan and provider availability.
+- Some article images may be missing or unavailable from the original publisher.
+- Some external article links may be paywalled or may expire.
+- AI responses may be incorrect and require verification.
+- Technical stock signals are educational rule-based indicators, not guaranteed
+  predictions.
+- The public feed is general market news and is not personalized for guests.
+- External APIs may impose rate limits or quotas.
+
+
+21. POSSIBLE FUTURE IMPROVEMENTS
+-------------------------------
+
+- Add automated backend and frontend tests.
+- Add database migrations with Alembic.
+- Add persistent document storage for production deployments.
+- Add vector embeddings for stronger semantic document retrieval.
+- Add background jobs for document processing.
+- Add stricter rate limiting for public endpoints.
+- Add observability, structured logging, and error monitoring.
+- Add deployment configuration for production hosting.
+- Add a formal open-source license.
+- Add a live demo and screenshots to the GitHub README.
+
+
+22. PROJECT SUMMARY
+-------------------
+
+MarketFlow combines a React and Next.js frontend with a FastAPI backend and
+external financial, news, and AI services.
+
+The public dashboard gives visitors an immediate view of current market news.
+Authentication unlocks personalized research tools, watchlists, reports, and
+the AI assistant. The assistant can answer questions using page context,
+conversation memory, and relevant document chunks. The backend protects API
+keys, enforces user ownership, controls external integrations, and keeps the
+frontend focused on presentation and user interaction.
+
+The main architectural goal is to provide a polished research workspace while
+keeping data access, authentication, document processing, AI orchestration, and
+external service integrations centralized in the backend.
