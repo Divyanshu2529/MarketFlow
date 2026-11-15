@@ -8,6 +8,55 @@ export const api = axios.create({
   },
 });
 
+let isRedirectingToLogin = false;
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const requestUrl = String(
+      error?.config?.url ?? ""
+    );
+
+    if (
+      status === 401 &&
+      typeof window !== "undefined"
+    ) {
+      const authPaths = [
+        "/login",
+        "/signup",
+        "/forgot-password",
+        "/reset-password",
+      ];
+
+      const isAuthPage = authPaths.some((path) =>
+        window.location.pathname.startsWith(path)
+      );
+
+      const isAuthRequest =
+        requestUrl.includes("/api/auth/login") ||
+        requestUrl.includes("/api/auth/signup") ||
+        requestUrl.includes(
+          "/api/auth/forgot-password"
+        ) ||
+        requestUrl.includes(
+          "/api/auth/reset-password"
+        );
+
+      if (
+        !isAuthPage &&
+        !isAuthRequest &&
+        !isRedirectingToLogin
+      ) {
+        isRedirectingToLogin = true;
+        window.location.replace("/login");
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 export type User = {
   id: number;
   name: string;
@@ -62,10 +111,15 @@ export type ReportDownloadFormat =
   | "docx"
   | "json";
 
-export const searchCompanies = async (query: string) => {
-  const response = await api.get("/api/company/search", {
-    params: { q: query },
-  });
+export const searchCompanies = async (
+  query: string
+) => {
+  const response = await api.get(
+    "/api/company/search",
+    {
+      params: { q: query },
+    }
+  );
 
   return response.data;
 };
@@ -98,11 +152,14 @@ export const logout = async () => {
   return response.data;
 };
 
-export const getCurrentUser = async (): Promise<User> => {
-  const response = await api.get<User>("/api/auth/me");
+export const getCurrentUser =
+  async (): Promise<User> => {
+    const response = await api.get<User>(
+      "/api/auth/me"
+    );
 
-  return response.data;
-};
+    return response.data;
+  };
 
 export const updateCurrentUser = async (
   name: string
@@ -207,8 +264,12 @@ export const getNewsFeed = async (): Promise<
   return response.data.articles ?? [];
 };
 
-export const getReports = async (): Promise<Report[]> => {
-  const response = await api.get<Report[]>("/api/reports");
+export const getReports = async (): Promise<
+  Report[]
+> => {
+  const response = await api.get<Report[]>(
+    "/api/reports"
+  );
 
   return response.data;
 };
@@ -226,12 +287,16 @@ export const getReport = async (
 export const createReport = async (
   data: CreateReportData
 ): Promise<Report> => {
-  const response = await api.post<Report>("/api/reports", {
-    ticker: data.ticker,
-    company_name: data.company_name,
-    report_type: data.report_type ?? "Equity Research",
-    report_data: data.report_data ?? {},
-  });
+  const response = await api.post<Report>(
+    "/api/reports",
+    {
+      ticker: data.ticker,
+      company_name: data.company_name,
+      report_type:
+        data.report_type ?? "Equity Research",
+      report_data: data.report_data ?? {},
+    }
+  );
 
   return response.data;
 };
@@ -288,7 +353,6 @@ export const downloadReport = async (
     window.URL.revokeObjectURL(fileUrl);
   }, 1000);
 };
-
 
 export type AssistantMessageRole =
   | "user"

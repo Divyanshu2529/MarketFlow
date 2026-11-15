@@ -7,19 +7,29 @@ from pathlib import Path
 import jwt
 from authlib.integrations.starlette_client import OAuth
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
+    TOKEN_EXPIRE_SECONDS,
     create_access_token,
     decode_access_token,
     hash_password,
     verify_password,
 )
 from app.db.database import get_db
-from app.models.password_reset_token import PasswordResetToken
+from app.models.password_reset_token import (
+    PasswordResetToken,
+)
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
@@ -30,11 +40,14 @@ from app.schemas.auth import (
     UpdateProfileRequest,
     UserResponse,
 )
-from app.services.email_service import send_password_reset_email
+from app.services.email_service import (
+    send_password_reset_email,
+)
 
 
 env_path = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(env_path, override=True)
+
 
 APP_URL = os.getenv(
     "APP_URL",
@@ -47,7 +60,9 @@ FRONTEND_URL = os.getenv(
 )
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_CLIENT_SECRET = os.getenv(
+    "GOOGLE_CLIENT_SECRET"
+)
 
 GOOGLE_REDIRECT_URI = os.getenv(
     "GOOGLE_REDIRECT_URI",
@@ -62,7 +77,7 @@ router = APIRouter(
 
 
 COOKIE_NAME = "marketflow_token"
-COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+COOKIE_MAX_AGE = TOKEN_EXPIRE_SECONDS
 
 
 oauth = OAuth()
