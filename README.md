@@ -7,7 +7,7 @@ MarketFlow is an AI-powered equity research platform that helps users discover f
 - Public market news feed available before signing in
 - Personalized news based on searches and watchlist companies
 - Company search and financial overviews
-- Technical stock analysis with price trends, indicators, volatility, and signals
+- Technical stock analysis with trends, indicators, volatility, and signals
 - Company comparison tools
 - Personal watchlists
 - Downloadable research reports
@@ -15,7 +15,8 @@ MarketFlow is an AI-powered equity research platform that helps users discover f
 - PDF and DOCX document uploads
 - Document chunking for efficient AI follow-up questions
 - Conversation history and assistant memory
-- Light and dark mode with a premium orange-and-white design
+- Light and dark mode
+- Premium orange-and-white visual design
 - Login and signup authentication
 - One-hour authenticated sessions with logout support
 - Protected research features for authenticated users
@@ -24,8 +25,8 @@ MarketFlow is an AI-powered equity research platform that helps users discover f
 
 ### Frontend
 
-- Next.js
 - React
+- Next.js React framework
 - TypeScript
 - Tailwind CSS
 - shadcn/ui
@@ -49,7 +50,7 @@ MarketFlow is an AI-powered equity research platform that helps users discover f
 
 ```mermaid
 flowchart LR
-    A[Next.js Frontend] --> B[FastAPI Backend]
+    A[React + Next.js Frontend] --> B[FastAPI Backend]
     B --> C[(Database)]
     B --> D[NewsAPI]
     B --> E[Gemini AI]
@@ -109,7 +110,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create a `backend/.env` file and add the environment variables used by the application:
+Create a `backend/.env` file:
 
 ```env
 DATABASE_URL=your_database_url
