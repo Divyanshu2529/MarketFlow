@@ -1,8 +1,12 @@
 "use client";
 
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+
 import remarkGfm from "remark-gfm";
 import ReactMarkdown from "react-markdown";
 import {
+  ChangeEvent,
   FormEvent,
   useEffect,
   useRef,
@@ -10,12 +14,15 @@ import {
 } from "react";
 import {
   Bot,
+  FileText,
   Loader2,
   MessageSquare,
+  Paperclip,
   Plus,
   Send,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -26,9 +33,11 @@ import {
   deleteAssistantConversation,
   getAssistantConversation,
   getAssistantConversations,
+  uploadAssistantDocument,
 } from "@/lib/api";
 import type {
   AssistantConversation,
+  AssistantDocument,
   AssistantMessage,
 } from "@/lib/api";
 
@@ -40,11 +49,12 @@ type ChatMessage = Pick<
 const welcomeMessage: ChatMessage = {
   role: "assistant",
   content:
-    "Hi! I’m the MarketFlow Assistant. Ask me about company research, stock analysis, financial concepts, news, watchlists, reports, or anything related to MarketFlow.",
+    "Hi! I’m the MarketFlow Assistant. Ask me about company research, stock analysis, financial concepts, news, watchlists, reports, uploaded documents, or anything related to MarketFlow.",
 };
 
 export default function MarketFlowBotPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [conversations, setConversations] = useState<
     AssistantConversation[]
@@ -55,6 +65,10 @@ export default function MarketFlowBotPage() {
     []
   );
   const [input, setInput] = useState("");
+  const [uploadedDocument, setUploadedDocument] =
+    useState<AssistantDocument | null>(null);
+  const [isUploadingDocument, setIsUploadingDocument] =
+    useState(false);
   const [isLoadingConversations, setIsLoadingConversations] =
     useState(true);
   const [isLoadingMessages, setIsLoadingMessages] =
@@ -102,6 +116,7 @@ export default function MarketFlowBotPage() {
         "Unable to load MarketFlow Bot conversations:",
         loadError
       );
+
       setError(
         "Unable to load your conversations. Please check that you are logged in and try again."
       );
@@ -115,6 +130,7 @@ export default function MarketFlowBotPage() {
   ) {
     setSelectedConversationId(conversationId);
     setIsLoadingMessages(true);
+    setUploadedDocument(null);
     setError("");
 
     try {
@@ -134,6 +150,7 @@ export default function MarketFlowBotPage() {
         "Unable to load assistant conversation:",
         loadError
       );
+
       setError(
         "Unable to load this conversation. Please try again."
       );
@@ -143,11 +160,13 @@ export default function MarketFlowBotPage() {
   }
 
   async function handleNewConversation() {
-    if (isSending) {
+    if (isSending || isUploadingDocument) {
       return;
     }
 
     setError("");
+    setUploadedDocument(null);
+    setInput("");
 
     try {
       const conversation =
@@ -159,6 +178,7 @@ export default function MarketFlowBotPage() {
         conversation,
         ...currentConversations,
       ]);
+
       setSelectedConversationId(conversation.id);
       setMessages([]);
     } catch (createError) {
@@ -166,6 +186,7 @@ export default function MarketFlowBotPage() {
         "Unable to create assistant conversation:",
         createError
       );
+
       setError(
         "Unable to start a new conversation. Please try again."
       );
@@ -175,7 +196,11 @@ export default function MarketFlowBotPage() {
   async function handleDeleteConversation(
     conversationId: number
   ) {
-    if (isSending || deletingConversationId !== null) {
+    if (
+      isSending ||
+      isUploadingDocument ||
+      deletingConversationId !== null
+    ) {
       return;
     }
 
@@ -213,6 +238,7 @@ export default function MarketFlowBotPage() {
         } else {
           setSelectedConversationId(null);
           setMessages([]);
+          setUploadedDocument(null);
         }
       }
     } catch (deleteError) {
@@ -220,6 +246,7 @@ export default function MarketFlowBotPage() {
         "Unable to delete assistant conversation:",
         deleteError
       );
+
       setError(
         "Unable to delete this conversation. Please try again."
       );
@@ -245,6 +272,7 @@ export default function MarketFlowBotPage() {
         conversation,
         ...currentConversations,
       ]);
+
       setSelectedConversationId(conversation.id);
 
       return conversation.id;
@@ -253,9 +281,11 @@ export default function MarketFlowBotPage() {
         "Unable to create assistant conversation:",
         createError
       );
+
       setError(
         "Unable to create a conversation. Please try again."
       );
+
       return null;
     }
   }
@@ -275,9 +305,63 @@ export default function MarketFlowBotPage() {
         "Unable to save assistant message:",
         saveError
       );
+
       setError(
         "The assistant responded, but this message could not be saved."
       );
+    }
+  }
+
+  async function handleDocumentSelected(
+    event: ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    const fileName = file.name.toLowerCase();
+
+    const isSupported =
+      fileName.endsWith(".pdf") ||
+      fileName.endsWith(".docx");
+
+    if (!isSupported) {
+      setError(
+        "Only PDF and DOCX files are supported."
+      );
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError(
+        "The file is too large. Maximum size is 10 MB."
+      );
+      return;
+    }
+
+    setError("");
+    setIsUploadingDocument(true);
+
+    try {
+      const document =
+        await uploadAssistantDocument(file);
+
+      setUploadedDocument(document);
+    } catch (uploadError) {
+      console.error(
+        "Document upload failed:",
+        uploadError
+      );
+
+      setError(
+        "Unable to read this document. Please choose a readable PDF or DOCX file."
+      );
+    } finally {
+      setIsUploadingDocument(false);
     }
   }
 
@@ -288,7 +372,11 @@ export default function MarketFlowBotPage() {
 
     const question = input.trim();
 
-    if (!question || isSending) {
+    if (
+      !question ||
+      isSending ||
+      isUploadingDocument
+    ) {
       return;
     }
 
@@ -315,7 +403,24 @@ export default function MarketFlowBotPage() {
     ];
 
     setMessages(updatedMessages);
-    await saveMessage(conversationId, userMessage);
+
+    await saveMessage(
+      conversationId,
+      userMessage
+    );
+
+    const assistantContext: Record<
+      string,
+      unknown
+    > = {
+      currentPage: "/assistant",
+      section: "MarketFlow Bot",
+    };
+
+    if (uploadedDocument) {
+      assistantContext.uploadedDocument =
+        uploadedDocument;
+    }
 
     try {
       const response = await api.post<{
@@ -323,10 +428,7 @@ export default function MarketFlowBotPage() {
       }>("/api/assistant/chat", {
         message: question,
         history: updatedMessages.slice(-12),
-        context: {
-          currentPage: "/assistant",
-          section: "MarketFlow Bot",
-        },
+        context: assistantContext,
       });
 
       const assistantMessage: ChatMessage = {
@@ -357,7 +459,8 @@ export default function MarketFlowBotPage() {
                     "New conversation"
                       ? question.slice(0, 80)
                       : conversation.title,
-                  updated_at: new Date().toISOString(),
+                  updated_at:
+                    new Date().toISOString(),
                 }
               : conversation
           )
@@ -432,7 +535,10 @@ export default function MarketFlowBotPage() {
                 onClick={() =>
                   void handleNewConversation()
                 }
-                disabled={isSending}
+                disabled={
+                  isSending ||
+                  isUploadingDocument
+                }
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Plus size={18} />
@@ -463,6 +569,7 @@ export default function MarketFlowBotPage() {
                     const isSelected =
                       conversation.id ===
                       selectedConversationId;
+
                     const isDeleting =
                       deletingConversationId ===
                       conversation.id;
@@ -514,6 +621,7 @@ export default function MarketFlowBotPage() {
                           }
                           disabled={
                             isSending ||
+                            isUploadingDocument ||
                             deletingConversationId !==
                               null
                           }
@@ -589,7 +697,8 @@ export default function MarketFlowBotPage() {
                         }`}
                       >
                         <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
+                          remarkPlugins={[remarkGfm, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
                           components={{
                             table: ({ children }) => (
                               <div className="my-2 overflow-x-auto">
@@ -698,10 +807,79 @@ export default function MarketFlowBotPage() {
             </div>
 
             <div className="shrink-0 border-t border-slate-200 bg-white/95 p-5 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(event) =>
+                  void handleDocumentSelected(event)
+                }
+                className="hidden"
+              />
+
+              {uploadedDocument && (
+                <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 dark:border-purple-800 dark:bg-purple-950/40">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <FileText
+                      size={18}
+                      className="shrink-0 text-purple-600"
+                    />
+
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                        {uploadedDocument.fileName}
+                      </p>
+
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {uploadedDocument.pageCount !==
+                        null
+                          ? `${uploadedDocument.pageCount} pages`
+                          : "DOCX document"}{" "}
+                        · attached
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setUploadedDocument(null)
+                    }
+                    disabled={isSending}
+                    aria-label="Remove attached document"
+                    className="rounded-lg p-1.5 text-slate-500 transition hover:bg-purple-100 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-purple-900/50"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+
               <form
                 onSubmit={handleSubmit}
                 className="flex items-end gap-3"
               >
+                <button
+                  type="button"
+                  onClick={() =>
+                    fileInputRef.current?.click()
+                  }
+                  disabled={
+                    isSending ||
+                    isUploadingDocument
+                  }
+                  aria-label="Upload PDF or DOCX document"
+                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-300 text-slate-500 transition hover:border-purple-500 hover:text-purple-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-400"
+                >
+                  {isUploadingDocument ? (
+                    <Loader2
+                      size={20}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Paperclip size={20} />
+                  )}
+                </button>
+
                 <textarea
                   value={input}
                   onChange={(event) =>
@@ -710,14 +888,19 @@ export default function MarketFlowBotPage() {
                   placeholder="Ask MarketFlow Bot a question..."
                   rows={3}
                   maxLength={4000}
-                  disabled={isSending}
+                  disabled={
+                    isSending ||
+                    isUploadingDocument
+                  }
                   className="min-h-14 flex-1 resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:focus:ring-purple-900"
                 />
 
                 <button
                   type="submit"
                   disabled={
-                    !input.trim() || isSending
+                    !input.trim() ||
+                    isSending ||
+                    isUploadingDocument
                   }
                   aria-label="Send message"
                   className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"

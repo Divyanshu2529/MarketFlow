@@ -14,9 +14,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
-    const requestUrl = String(
-      error?.config?.url ?? ""
-    );
+    const requestUrl = String(error?.config?.url ?? "");
 
     if (
       status === 401 &&
@@ -36,12 +34,8 @@ api.interceptors.response.use(
       const isAuthRequest =
         requestUrl.includes("/api/auth/login") ||
         requestUrl.includes("/api/auth/signup") ||
-        requestUrl.includes(
-          "/api/auth/forgot-password"
-        ) ||
-        requestUrl.includes(
-          "/api/auth/reset-password"
-        );
+        requestUrl.includes("/api/auth/forgot-password") ||
+        requestUrl.includes("/api/auth/reset-password");
 
       if (
         !isAuthPage &&
@@ -376,6 +370,36 @@ export type AssistantConversationDetail =
   AssistantConversation & {
     messages: AssistantMessage[];
   };
+
+export type AssistantDocument = {
+  fileName: string;
+  contentType: string;
+  text: string;
+  pageCount: number | null;
+  characterCount: number;
+  truncated: boolean;
+};
+
+export const uploadAssistantDocument = async (
+  file: File
+): Promise<AssistantDocument> => {
+  const formData = new FormData();
+
+  formData.append("file", file);
+
+  const response =
+    await api.post<AssistantDocument>(
+      "/api/assistant/documents",
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+
+  return response.data;
+};
 
 export const getAssistantConversations =
   async (): Promise<AssistantConversation[]> => {

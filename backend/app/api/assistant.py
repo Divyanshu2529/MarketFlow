@@ -1,4 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
@@ -12,12 +19,33 @@ from app.services.assistant_service import (
     AssistantUnavailable,
     generate_assistant_answer,
 )
+from app.services.document_service import (
+    DocumentExtractionError,
+    extract_uploaded_document,
+)
 
 
 router = APIRouter(
     prefix="/api/assistant",
     tags=["AI Assistant"],
 )
+
+
+@router.post(
+    "/documents",
+)
+async def upload_assistant_document(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        return await extract_uploaded_document(file)
+
+    except DocumentExtractionError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
 
 
 @router.post(
@@ -36,10 +64,14 @@ async def chat_with_assistant(
             db=db,
         )
 
-        return AssistantChatResponse(answer=answer)
+        return AssistantChatResponse(
+            answer=answer
+        )
 
     except AssistantUnavailable as error:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
             detail=str(error),
         ) from error

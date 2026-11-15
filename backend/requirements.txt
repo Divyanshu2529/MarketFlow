@@ -165,3 +165,5 @@ google-genai==2.17.0
 Authlib==1.8.0
 python-docx==1.2.0
 reportlab
+pypdf
+python-multipart

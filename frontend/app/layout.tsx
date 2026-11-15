@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "katex/dist/katex.min.css";
 import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 
