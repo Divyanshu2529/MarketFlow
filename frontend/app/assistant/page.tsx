@@ -1,0 +1,751 @@
+"use client";
+
+import remarkGfm from "remark-gfm";
+import ReactMarkdown from "react-markdown";
+import {
+  FormEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  Bot,
+  Loader2,
+  MessageSquare,
+  Plus,
+  Send,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import {
+  addAssistantMessage,
+  api,
+  createAssistantConversation,
+  deleteAssistantConversation,
+  getAssistantConversation,
+  getAssistantConversations,
+} from "@/lib/api";
+import type {
+  AssistantConversation,
+  AssistantMessage,
+} from "@/lib/api";
+
+type ChatMessage = Pick<
+  AssistantMessage,
+  "role" | "content"
+>;
+
+const welcomeMessage: ChatMessage = {
+  role: "assistant",
+  content:
+    "Hi! I’m the MarketFlow Assistant. Ask me about company research, stock analysis, financial concepts, news, watchlists, reports, or anything related to MarketFlow.",
+};
+
+export default function MarketFlowBotPage() {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const [conversations, setConversations] = useState<
+    AssistantConversation[]
+  >([]);
+
+  const [selectedConversationId, setSelectedConversationId] =
+    useState<number | null>(null);
+
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    []
+  );
+
+  const [input, setInput] = useState("");
+  const [isLoadingConversations, setIsLoadingConversations] =
+    useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] =
+    useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [deletingConversationId, setDeletingConversationId] =
+    useState<number | null>(null);
+  const [error, setError] = useState("");
+
+  const selectedConversation = conversations.find(
+    (conversation) =>
+      conversation.id === selectedConversationId
+  );
+
+  const visibleMessages =
+    messages.length > 0 ? messages : [welcomeMessage];
+
+  useEffect(() => {
+    void initializePage();
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [messages, isSending]);
+
+  async function initializePage() {
+    setIsLoadingConversations(true);
+    setError("");
+
+    try {
+      const savedConversations =
+        await getAssistantConversations();
+
+      setConversations(savedConversations);
+
+      if (savedConversations.length > 0) {
+        await loadConversation(
+          savedConversations[0].id
+        );
+      }
+    } catch (loadError) {
+      console.error(
+        "Unable to load MarketFlow Bot conversations:",
+        loadError
+      );
+
+      setError(
+        "Unable to load your conversations. Please check that you are logged in and try again."
+      );
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }
+
+  async function loadConversation(
+    conversationId: number
+  ) {
+    setSelectedConversationId(conversationId);
+    setIsLoadingMessages(true);
+    setError("");
+
+    try {
+      const conversation =
+        await getAssistantConversation(
+          conversationId
+        );
+
+      setMessages(
+        conversation.messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        }))
+      );
+    } catch (loadError) {
+      console.error(
+        "Unable to load assistant conversation:",
+        loadError
+      );
+
+      setError(
+        "Unable to load this conversation. Please try again."
+      );
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }
+
+  async function handleNewConversation() {
+    if (isSending) {
+      return;
+    }
+
+    setError("");
+
+    try {
+      const conversation =
+        await createAssistantConversation(
+          "New conversation"
+        );
+
+      setConversations((currentConversations) => [
+        conversation,
+        ...currentConversations,
+      ]);
+
+      setSelectedConversationId(conversation.id);
+      setMessages([]);
+    } catch (createError) {
+      console.error(
+        "Unable to create assistant conversation:",
+        createError
+      );
+
+      setError(
+        "Unable to start a new conversation. Please try again."
+      );
+    }
+  }
+
+  async function handleDeleteConversation(
+    conversationId: number
+  ) {
+    if (isSending || deletingConversationId !== null) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Delete this conversation? This action cannot be undone."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingConversationId(conversationId);
+    setError("");
+
+    try {
+      await deleteAssistantConversation(
+        conversationId
+      );
+
+      const remainingConversations = conversations.filter(
+        (conversation) =>
+          conversation.id !== conversationId
+      );
+
+      setConversations(remainingConversations);
+
+      if (selectedConversationId === conversationId) {
+        const nextConversation =
+          remainingConversations[0];
+
+        if (nextConversation) {
+          await loadConversation(
+            nextConversation.id
+          );
+        } else {
+          setSelectedConversationId(null);
+          setMessages([]);
+        }
+      }
+    } catch (deleteError) {
+      console.error(
+        "Unable to delete assistant conversation:",
+        deleteError
+      );
+
+      setError(
+        "Unable to delete this conversation. Please try again."
+      );
+    } finally {
+      setDeletingConversationId(null);
+    }
+  }
+
+  async function ensureConversation(): Promise<
+    number | null
+  > {
+    if (selectedConversationId !== null) {
+      return selectedConversationId;
+    }
+
+    try {
+      const conversation =
+        await createAssistantConversation(
+          "New conversation"
+        );
+
+      setConversations((currentConversations) => [
+        conversation,
+        ...currentConversations,
+      ]);
+
+      setSelectedConversationId(conversation.id);
+
+      return conversation.id;
+    } catch (createError) {
+      console.error(
+        "Unable to create assistant conversation:",
+        createError
+      );
+
+      setError(
+        "Unable to create a conversation. Please try again."
+      );
+
+      return null;
+    }
+  }
+
+  async function saveMessage(
+    conversationId: number,
+    message: ChatMessage
+  ) {
+    try {
+      await addAssistantMessage(
+        conversationId,
+        message.role,
+        message.content
+      );
+    } catch (saveError) {
+      console.error(
+        "Unable to save assistant message:",
+        saveError
+      );
+
+      setError(
+        "The assistant responded, but this message could not be saved."
+      );
+    }
+  }
+
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    const question = input.trim();
+
+    if (!question || isSending) {
+      return;
+    }
+
+    setInput("");
+    setIsSending(true);
+    setError("");
+
+    const conversationId =
+      await ensureConversation();
+
+    if (conversationId === null) {
+      setIsSending(false);
+      return;
+    }
+
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: question,
+    };
+
+    const updatedMessages = [
+      ...messages,
+      userMessage,
+    ];
+
+    setMessages(updatedMessages);
+
+    await saveMessage(conversationId, userMessage);
+
+    try {
+      const response = await api.post<{
+        answer: string;
+      }>("/api/assistant/chat", {
+        message: question,
+        history: updatedMessages.slice(-12),
+        context: {
+          currentPage: "/assistant",
+          section: "MarketFlow Bot",
+        },
+      });
+
+      const assistantMessage: ChatMessage = {
+        role: "assistant",
+        content:
+          response.data.answer ||
+          "I could not generate a response.",
+      };
+
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        assistantMessage,
+      ]);
+
+      await saveMessage(
+        conversationId,
+        assistantMessage
+      );
+
+      setConversations((currentConversations) =>
+        currentConversations
+          .map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  title:
+                    conversation.title ===
+                    "New conversation"
+                      ? question.slice(0, 80)
+                      : conversation.title,
+                  updated_at: new Date().toISOString(),
+                }
+              : conversation
+          )
+          .sort(
+            (first, second) =>
+              new Date(
+                second.updated_at
+              ).getTime() -
+              new Date(
+                first.updated_at
+              ).getTime()
+          )
+      );
+    } catch (chatError) {
+      console.error(
+        "MarketFlow Bot request failed:",
+        chatError
+      );
+
+      const errorMessage: ChatMessage = {
+        role: "assistant",
+        content:
+          "I’m unable to respond right now. Please check that the backend and AI service are running, then try again.",
+      };
+
+      setMessages((currentMessages) => [
+        ...currentMessages,
+        errorMessage,
+      ]);
+
+      await saveMessage(
+        conversationId,
+        errorMessage
+      );
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+            <Bot size={26} />
+          </div>
+
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+              MarketFlow Bot
+            </h1>
+
+            <p className="mt-1 text-slate-500 dark:text-slate-400">
+              Your dedicated AI research workspace.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+            {error}
+          </p>
+        )}
+
+        <div className="grid min-h-[650px] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="flex min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="border-b border-slate-200 p-4 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() =>
+                  void handleNewConversation()
+                }
+                disabled={isSending}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus size={18} />
+                New conversation
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3">
+              <p className="px-2 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Previous conversations
+              </p>
+
+              {isLoadingConversations ? (
+                <div className="flex items-center gap-2 px-2 py-4 text-sm text-slate-500">
+                  <Loader2
+                    size={16}
+                    className="animate-spin"
+                  />
+                  Loading conversations...
+                </div>
+              ) : conversations.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                  No conversations yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {conversations.map((conversation) => {
+                    const isSelected =
+                      conversation.id ===
+                      selectedConversationId;
+
+                    const isDeleting =
+                      deletingConversationId ===
+                      conversation.id;
+
+                    return (
+                      <div
+                        key={conversation.id}
+                        className={`flex items-center gap-1 rounded-xl border transition ${
+                          isSelected
+                            ? "border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-950/40"
+                            : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void loadConversation(
+                              conversation.id
+                            )
+                          }
+                          className="min-w-0 flex-1 px-3 py-3 text-left"
+                        >
+                          <div className="flex items-start gap-2">
+                            <MessageSquare
+                              size={16}
+                              className="mt-0.5 shrink-0 text-purple-600"
+                            />
+
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                                {conversation.title}
+                              </p>
+
+                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                {new Date(
+                                  conversation.updated_at
+                                ).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handleDeleteConversation(
+                              conversation.id
+                            )
+                          }
+                          disabled={
+                            isSending ||
+                            deletingConversationId !==
+                              null
+                          }
+                          aria-label={`Delete ${conversation.title}`}
+                          className="mr-2 rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/40"
+                        >
+                          {isDeleting ? (
+                            <Loader2
+                              size={16}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <Trash2 size={16} />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </aside>
+
+          <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <header className="flex items-center gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                <Sparkles size={20} />
+              </div>
+
+              <div className="min-w-0">
+                <h2 className="truncate font-bold text-slate-900 dark:text-white">
+                  {selectedConversation?.title ??
+                    "New conversation"}
+                </h2>
+
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  MarketFlow Assistant
+                </p>
+              </div>
+            </header>
+
+            <div
+              aria-busy={isLoadingMessages}
+              className="flex-1 space-y-4 overflow-y-auto p-5"
+            >
+              {isLoadingMessages ? (
+                <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+                  <Loader2
+                    size={18}
+                    className="animate-spin"
+                  />
+                  Loading conversation...
+                </div>
+              ) : (
+                visibleMessages.map((message, index) => {
+                  const isUser =
+                    message.role === "user";
+
+                  return (
+                    <div
+                      key={`${message.role}-${index}`}
+                      className={`flex ${
+                        isUser
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`max-w-[85%] break-words overflow-hidden rounded-2xl px-4 py-3 text-sm leading-6 ${
+                          isUser
+                            ? "rounded-br-md bg-purple-600 text-white"
+                            : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        }`}
+                      >
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            table: ({ children }) => (
+                              <div className="my-2 overflow-x-auto">
+                                <table className="min-w-full border-collapse text-left text-xs">
+                                  {children}
+                                </table>
+                              </div>
+                            ),
+                            thead: ({ children }) => (
+                              <thead className="bg-slate-200 dark:bg-slate-700">
+                                {children}
+                              </thead>
+                            ),
+                            tbody: ({ children }) => (
+                              <tbody>{children}</tbody>
+                            ),
+                            tr: ({ children }) => (
+                              <tr className="border-b border-slate-200 dark:border-slate-600">
+                                {children}
+                              </tr>
+                            ),
+                            th: ({ children }) => (
+                              <th className="px-2 py-2 font-semibold">
+                                {children}
+                              </th>
+                            ),
+                            td: ({ children }) => (
+                              <td className="px-2 py-2">
+                                {children}
+                              </td>
+                            ),
+                            p: ({ children }) => (
+                              <p className="mb-2 last:mb-0">
+                                {children}
+                              </p>
+                            ),
+                            h1: ({ children }) => (
+                              <h1 className="mb-2 text-lg font-bold">
+                                {children}
+                              </h1>
+                            ),
+                            h2: ({ children }) => (
+                              <h2 className="mb-2 text-base font-bold">
+                                {children}
+                              </h2>
+                            ),
+                            h3: ({ children }) => (
+                              <h3 className="mb-2 font-semibold">
+                                {children}
+                              </h3>
+                            ),
+                            ul: ({ children }) => (
+                              <ul className="mb-2 list-disc space-y-1 pl-5">
+                                {children}
+                              </ul>
+                            ),
+                            ol: ({ children }) => (
+                              <ol className="mb-2 list-decimal space-y-1 pl-5">
+                                {children}
+                              </ol>
+                            ),
+                            strong: ({ children }) => (
+                              <strong className="font-semibold">
+                                {children}
+                              </strong>
+                            ),
+                            a: ({ href, children }) => (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-purple-600 underline dark:text-purple-400"
+                              >
+                                {children}
+                              </a>
+                            ),
+                            blockquote: ({ children }) => (
+                              <blockquote className="border-l-2 border-purple-400 pl-3 italic">
+                                {children}
+                              </blockquote>
+                            ),
+                            code: ({ children }) => (
+                              <code className="rounded bg-slate-200 px-1 py-0.5 text-xs dark:bg-slate-700">
+                                {children}
+                              </code>
+                            ),
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+
+              {isSending && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl rounded-bl-md bg-slate-100 px-4 py-3 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    Thinking...
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="border-t border-slate-200 p-5 dark:border-slate-700">
+              <form
+                onSubmit={handleSubmit}
+                className="flex items-end gap-3"
+              >
+                <textarea
+                  value={input}
+                  onChange={(event) =>
+                    setInput(event.target.value)
+                  }
+                  placeholder="Ask MarketFlow Bot a question..."
+                  rows={3}
+                  maxLength={4000}
+                  disabled={isSending}
+                  className="min-h-14 flex-1 resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:focus:ring-purple-900"
+                />
+
+                <button
+                  type="submit"
+                  disabled={
+                    !input.trim() || isSending
+                  }
+                  aria-label="Send message"
+                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Send size={20} />
+                </button>
+              </form>
+
+              <p className="mt-3 text-center text-[11px] leading-4 text-slate-400">
+                AI responses may be imperfect. Verify important
+                financial information independently.
+              </p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}

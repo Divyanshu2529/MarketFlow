@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   BarChart3,
   Search,
+  Bot,
   GitCompare,
   Star,
   FileText,
@@ -11,13 +12,46 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Research", href: "/research", icon: Search },
-  { label: "Stock Analysis", href: "/stocks", icon: TrendingUp },
-  { label: "Compare", href: "/compare", icon: GitCompare },
-  { label: "Watchlist", href: "/watchlist", icon: Star },
-  { label: "Reports", href: "/reports", icon: FileText },
-  { label: "Settings", href: "/settings", icon: Settings },
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    label: "Research",
+    href: "/research",
+    icon: Search,
+  },
+  {
+    label: "MarketFlow Bot",
+    href: "/assistant",
+    icon: Bot,
+  },
+  {
+    label: "Stock Analysis",
+    href: "/stocks",
+    icon: TrendingUp,
+  },
+  {
+    label: "Compare",
+    href: "/compare",
+    icon: GitCompare,
+  },
+  {
+    label: "Watchlist",
+    href: "/watchlist",
+    icon: Star,
+  },
+  {
+    label: "Reports",
+    href: "/reports",
+    icon: FileText,
+  },
+  {
+    label: "Settings",
+    href: "/settings",
+    icon: Settings,
+  },
 ];
 
 export function Sidebar() {
@@ -32,6 +66,7 @@ export function Sidebar() {
           <h1 className="text-lg font-bold text-slate-900">
             MarketFlow
           </h1>
+
           <p className="text-xs text-slate-500">
             AI Equity Research
           </p>
