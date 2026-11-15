@@ -11,6 +11,9 @@ from app.models.assistant_conversation import (
     AssistantConversation,
 )
 from app.models.assistant_message import AssistantMessage
+from app.models.assistant_message_attachment import (
+    AssistantMessageAttachment,
+)
 from app.models.user import User
 from app.schemas.assistant_memory import (
     AssistantConversationCreate,
@@ -37,6 +40,8 @@ async def get_user_conversation(
         .options(
             selectinload(
                 AssistantConversation.messages
+            ).selectinload(
+                AssistantMessage.attachment
             )
         )
         .where(
@@ -158,10 +163,20 @@ async def add_conversation_message(
         db,
     )
 
+    attachment = None
+
+    if payload.attachment is not None:
+        attachment = AssistantMessageAttachment(
+            file_name=payload.attachment.file_name,
+            content_type=payload.attachment.content_type,
+            page_count=payload.attachment.page_count,
+        )
+
     message = AssistantMessage(
         conversation_id=conversation.id,
         role=payload.role,
         content=payload.content.strip(),
+        attachment=attachment,
     )
 
     if (
@@ -174,6 +189,21 @@ async def add_conversation_message(
 
     db.add(message)
     await db.commit()
-    await db.refresh(message)
 
-    return message
+    saved_message = await db.scalar(
+        select(AssistantMessage)
+        .options(
+            selectinload(
+                AssistantMessage.attachment
+            )
+        )
+        .where(AssistantMessage.id == message.id)
+    )
+
+    if saved_message is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to save assistant message",
+        )
+
+    return saved_message

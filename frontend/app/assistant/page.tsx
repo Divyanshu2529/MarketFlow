@@ -2,7 +2,6 @@
 
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-
 import remarkGfm from "remark-gfm";
 import ReactMarkdown from "react-markdown";
 import {
@@ -27,7 +26,6 @@ import {
 
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
-  addAssistantMessage,
   api,
   createAssistantConversation,
   deleteAssistantConversation,
@@ -37,20 +35,60 @@ import {
 } from "@/lib/api";
 import type {
   AssistantConversation,
-  AssistantDocument,
   AssistantMessage,
 } from "@/lib/api";
+
+type UploadedDocument = {
+  fileName: string;
+  contentType: string;
+  text: string;
+  pageCount: number | null;
+  characterCount: number;
+  truncated: boolean;
+};
+
+type ChatAttachment = {
+  fileName: string;
+  contentType: string;
+  pageCount: number | null;
+};
+
+type PersistedAssistantMessage = AssistantMessage & {
+  attachment?: ChatAttachment | null;
+};
 
 type ChatMessage = Pick<
   AssistantMessage,
   "role" | "content"
->;
+> & {
+  attachment?: ChatAttachment | null;
+};
 
 const welcomeMessage: ChatMessage = {
   role: "assistant",
   content:
     "Hi! I’m the MarketFlow Assistant. Ask me about company research, stock analysis, financial concepts, news, watchlists, reports, uploaded documents, or anything related to MarketFlow.",
 };
+
+function documentToAttachment(
+  document: UploadedDocument
+): ChatAttachment {
+  return {
+    fileName: document.fileName,
+    contentType: document.contentType,
+    pageCount: document.pageCount,
+  };
+}
+
+function attachmentType(
+  attachment: ChatAttachment
+): string {
+  return attachment.contentType
+    .toLowerCase()
+    .includes("pdf")
+    ? "PDF"
+    : "DOCX";
+}
 
 export default function MarketFlowBotPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -59,23 +97,40 @@ export default function MarketFlowBotPage() {
   const [conversations, setConversations] = useState<
     AssistantConversation[]
   >([]);
-  const [selectedConversationId, setSelectedConversationId] =
-    useState<number | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    []
-  );
+
+  const [
+    selectedConversationId,
+    setSelectedConversationId,
+  ] = useState<number | null>(null);
+
+  const [messages, setMessages] = useState<
+    ChatMessage[]
+  >([]);
+
   const [input, setInput] = useState("");
-  const [uploadedDocument, setUploadedDocument] =
-    useState<AssistantDocument | null>(null);
+
+  const [pendingDocument, setPendingDocument] =
+    useState<UploadedDocument | null>(null);
+
+  const [activeDocument, setActiveDocument] =
+    useState<UploadedDocument | null>(null);
+
   const [isUploadingDocument, setIsUploadingDocument] =
     useState(false);
+
   const [isLoadingConversations, setIsLoadingConversations] =
     useState(true);
+
   const [isLoadingMessages, setIsLoadingMessages] =
     useState(false);
+
   const [isSending, setIsSending] = useState(false);
-  const [deletingConversationId, setDeletingConversationId] =
-    useState<number | null>(null);
+
+  const [
+    deletingConversationId,
+    setDeletingConversationId,
+  ] = useState<number | null>(null);
+
   const [error, setError] = useState("");
 
   const selectedConversation = conversations.find(
@@ -130,7 +185,8 @@ export default function MarketFlowBotPage() {
   ) {
     setSelectedConversationId(conversationId);
     setIsLoadingMessages(true);
-    setUploadedDocument(null);
+    setPendingDocument(null);
+    setActiveDocument(null);
     setError("");
 
     try {
@@ -139,10 +195,14 @@ export default function MarketFlowBotPage() {
           conversationId
         );
 
+      const persistedMessages =
+        conversation.messages as PersistedAssistantMessage[];
+
       setMessages(
-        conversation.messages.map((message) => ({
+        persistedMessages.map((message) => ({
           role: message.role,
           content: message.content,
+          attachment: message.attachment ?? null,
         }))
       );
     } catch (loadError) {
@@ -165,7 +225,8 @@ export default function MarketFlowBotPage() {
     }
 
     setError("");
-    setUploadedDocument(null);
+    setPendingDocument(null);
+    setActiveDocument(null);
     setInput("");
 
     try {
@@ -238,7 +299,8 @@ export default function MarketFlowBotPage() {
         } else {
           setSelectedConversationId(null);
           setMessages([]);
-          setUploadedDocument(null);
+          setPendingDocument(null);
+          setActiveDocument(null);
         }
       }
     } catch (deleteError) {
@@ -295,10 +357,17 @@ export default function MarketFlowBotPage() {
     message: ChatMessage
   ) {
     try {
-      await addAssistantMessage(
-        conversationId,
-        message.role,
-        message.content
+      await api.post(
+        `/api/assistant/conversations/${conversationId}/messages`,
+        {
+          role: message.role,
+          content: message.content,
+          ...(message.attachment
+            ? {
+                attachment: message.attachment,
+              }
+            : {}),
+        }
       );
     } catch (saveError) {
       console.error(
@@ -348,9 +417,11 @@ export default function MarketFlowBotPage() {
 
     try {
       const document =
-        await uploadAssistantDocument(file);
+        (await uploadAssistantDocument(
+          file
+        )) as unknown as UploadedDocument;
 
-      setUploadedDocument(document);
+      setPendingDocument(document);
     } catch (uploadError) {
       console.error(
         "Document upload failed:",
@@ -380,7 +451,15 @@ export default function MarketFlowBotPage() {
       return;
     }
 
+    const documentForQuestion =
+      pendingDocument ?? activeDocument;
+
+    const attachment = pendingDocument
+      ? documentToAttachment(pendingDocument)
+      : null;
+
     setInput("");
+    setPendingDocument(null);
     setIsSending(true);
     setError("");
 
@@ -392,9 +471,14 @@ export default function MarketFlowBotPage() {
       return;
     }
 
+    if (documentForQuestion) {
+      setActiveDocument(documentForQuestion);
+    }
+
     const userMessage: ChatMessage = {
       role: "user",
       content: question,
+      attachment,
     };
 
     const updatedMessages = [
@@ -417,17 +501,24 @@ export default function MarketFlowBotPage() {
       section: "MarketFlow Bot",
     };
 
-    if (uploadedDocument) {
+    if (documentForQuestion) {
       assistantContext.uploadedDocument =
-        uploadedDocument;
+        documentForQuestion;
     }
+
+    const historyForAI = updatedMessages
+      .slice(-12)
+      .map(({ role, content }) => ({
+        role,
+        content,
+      }));
 
     try {
       const response = await api.post<{
         answer: string;
       }>("/api/assistant/chat", {
         message: question,
-        history: updatedMessages.slice(-12),
+        history: historyForAI,
         context: assistantContext,
       });
 
@@ -689,106 +780,142 @@ export default function MarketFlowBotPage() {
                           : "justify-start"
                       }`}
                     >
-                      <div
-                        className={`max-w-[85%] break-words overflow-hidden rounded-2xl px-4 py-3 text-sm leading-6 ${
-                          isUser
-                            ? "rounded-br-md bg-purple-600 text-white"
-                            : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                        }`}
-                      >
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm, remarkMath]}
-                          rehypePlugins={[rehypeKatex]}
-                          components={{
-                            table: ({ children }) => (
-                              <div className="my-2 overflow-x-auto">
-                                <table className="min-w-full border-collapse text-left text-xs">
-                                  {children}
-                                </table>
-                              </div>
-                            ),
-                            thead: ({ children }) => (
-                              <thead className="bg-slate-200 dark:bg-slate-700">
-                                {children}
-                              </thead>
-                            ),
-                            tbody: ({ children }) => (
-                              <tbody>{children}</tbody>
-                            ),
-                            tr: ({ children }) => (
-                              <tr className="border-b border-slate-200 dark:border-slate-600">
-                                {children}
-                              </tr>
-                            ),
-                            th: ({ children }) => (
-                              <th className="px-2 py-2 font-semibold">
-                                {children}
-                              </th>
-                            ),
-                            td: ({ children }) => (
-                              <td className="px-2 py-2">
-                                {children}
-                              </td>
-                            ),
-                            p: ({ children }) => (
-                              <p className="mb-2 last:mb-0">
-                                {children}
+                      <div className="max-w-[85%]">
+                        {message.attachment && (
+                          <div
+                            className={`mb-2 flex items-center gap-3 rounded-2xl border px-4 py-3 ${
+                              isUser
+                                ? "border-purple-300 bg-purple-100 text-purple-950 dark:border-purple-700 dark:bg-purple-950/50 dark:text-purple-100"
+                                : "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                            }`}
+                          >
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/80 text-purple-600 dark:bg-slate-900/70 dark:text-purple-300">
+                              <FileText size={18} />
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">
+                                {message.attachment.fileName}
                               </p>
-                            ),
-                            h1: ({ children }) => (
-                              <h1 className="mb-2 text-lg font-bold">
-                                {children}
-                              </h1>
-                            ),
-                            h2: ({ children }) => (
-                              <h2 className="mb-2 text-base font-bold">
-                                {children}
-                              </h2>
-                            ),
-                            h3: ({ children }) => (
-                              <h3 className="mb-2 font-semibold">
-                                {children}
-                              </h3>
-                            ),
-                            ul: ({ children }) => (
-                              <ul className="mb-2 list-disc space-y-1 pl-5">
-                                {children}
-                              </ul>
-                            ),
-                            ol: ({ children }) => (
-                              <ol className="mb-2 list-decimal space-y-1 pl-5">
-                                {children}
-                              </ol>
-                            ),
-                            strong: ({ children }) => (
-                              <strong className="font-semibold">
-                                {children}
-                              </strong>
-                            ),
-                            a: ({ href, children }) => (
-                              <a
-                                href={href}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-purple-600 underline dark:text-purple-400"
-                              >
-                                {children}
-                              </a>
-                            ),
-                            blockquote: ({ children }) => (
-                              <blockquote className="border-l-2 border-purple-400 pl-3 italic">
-                                {children}
-                              </blockquote>
-                            ),
-                            code: ({ children }) => (
-                              <code className="rounded bg-slate-200 px-1 py-0.5 text-xs dark:bg-slate-700">
-                                {children}
-                              </code>
-                            ),
-                          }}
+
+                              <p className="mt-0.5 text-xs opacity-70">
+                                {attachmentType(
+                                  message.attachment
+                                )}{" "}
+                                ·{" "}
+                                {message.attachment
+                                  .pageCount !== null
+                                  ? `${message.attachment.pageCount} pages`
+                                  : "Document"}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        <div
+                          className={`break-words overflow-hidden rounded-2xl px-4 py-3 text-sm leading-6 ${
+                            isUser
+                              ? "rounded-br-md bg-purple-600 text-white"
+                              : "rounded-bl-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          }`}
                         >
-                          {message.content}
-                        </ReactMarkdown>
+                          <ReactMarkdown
+                            remarkPlugins={[
+                              remarkGfm,
+                              remarkMath,
+                            ]}
+                            rehypePlugins={[rehypeKatex]}
+                            components={{
+                              table: ({ children }) => (
+                                <div className="my-2 overflow-x-auto">
+                                  <table className="min-w-full border-collapse text-left text-xs">
+                                    {children}
+                                  </table>
+                                </div>
+                              ),
+                              thead: ({ children }) => (
+                                <thead className="bg-slate-200 dark:bg-slate-700">
+                                  {children}
+                                </thead>
+                              ),
+                              tbody: ({ children }) => (
+                                <tbody>{children}</tbody>
+                              ),
+                              tr: ({ children }) => (
+                                <tr className="border-b border-slate-200 dark:border-slate-600">
+                                  {children}
+                                </tr>
+                              ),
+                              th: ({ children }) => (
+                                <th className="px-2 py-2 font-semibold">
+                                  {children}
+                                </th>
+                              ),
+                              td: ({ children }) => (
+                                <td className="px-2 py-2">
+                                  {children}
+                                </td>
+                              ),
+                              p: ({ children }) => (
+                                <p className="mb-2 last:mb-0">
+                                  {children}
+                                </p>
+                              ),
+                              h1: ({ children }) => (
+                                <h1 className="mb-2 text-lg font-bold">
+                                  {children}
+                                </h1>
+                              ),
+                              h2: ({ children }) => (
+                                <h2 className="mb-2 text-base font-bold">
+                                  {children}
+                                </h2>
+                              ),
+                              h3: ({ children }) => (
+                                <h3 className="mb-2 font-semibold">
+                                  {children}
+                                </h3>
+                              ),
+                              ul: ({ children }) => (
+                                <ul className="mb-2 list-disc space-y-1 pl-5">
+                                  {children}
+                                </ul>
+                              ),
+                              ol: ({ children }) => (
+                                <ol className="mb-2 list-decimal space-y-1 pl-5">
+                                  {children}
+                                </ol>
+                              ),
+                              strong: ({ children }) => (
+                                <strong className="font-semibold">
+                                  {children}
+                                </strong>
+                              ),
+                              a: ({ href, children }) => (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-purple-600 underline dark:text-purple-400"
+                                >
+                                  {children}
+                                </a>
+                              ),
+                              blockquote: ({ children }) => (
+                                <blockquote className="border-l-2 border-purple-400 pl-3 italic">
+                                  {children}
+                                </blockquote>
+                              ),
+                              code: ({ children }) => (
+                                <code className="rounded bg-slate-200 px-1 py-0.5 text-xs dark:bg-slate-700">
+                                  {children}
+                                </code>
+                              ),
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                     </div>
                   );
@@ -817,7 +944,7 @@ export default function MarketFlowBotPage() {
                 className="hidden"
               />
 
-              {uploadedDocument && (
+              {pendingDocument && (
                 <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 dark:border-purple-800 dark:bg-purple-950/40">
                   <div className="flex min-w-0 items-center gap-2">
                     <FileText
@@ -827,15 +954,15 @@ export default function MarketFlowBotPage() {
 
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                        {uploadedDocument.fileName}
+                        {pendingDocument.fileName}
                       </p>
 
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {uploadedDocument.pageCount !==
+                        {pendingDocument.pageCount !==
                         null
-                          ? `${uploadedDocument.pageCount} pages`
+                          ? `${pendingDocument.pageCount} pages`
                           : "DOCX document"}{" "}
-                        · attached
+                        · ready to send
                       </p>
                     </div>
                   </div>
@@ -843,13 +970,39 @@ export default function MarketFlowBotPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      setUploadedDocument(null)
+                      setPendingDocument(null)
                     }
                     disabled={isSending}
                     aria-label="Remove attached document"
                     className="rounded-lg p-1.5 text-slate-500 transition hover:bg-purple-100 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-purple-900/50"
                   >
                     <X size={16} />
+                  </button>
+                </div>
+              )}
+
+              {activeDocument && !pendingDocument && (
+                <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <FileText
+                      size={17}
+                      className="shrink-0 text-purple-600"
+                    />
+
+                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                      Using {activeDocument.fileName} for follow-up questions
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveDocument(null)
+                    }
+                    aria-label="Stop using document"
+                    className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                  >
+                    <X size={15} />
                   </button>
                 </div>
               )}

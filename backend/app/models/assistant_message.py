@@ -46,3 +46,12 @@ class AssistantMessage(Base):
         "AssistantConversation",
         back_populates="messages",
     )
+
+    attachment: Mapped[
+        "AssistantMessageAttachment | None"
+    ] = relationship(
+        "AssistantMessageAttachment",
+        back_populates="message",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
