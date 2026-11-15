@@ -49,14 +49,11 @@ export default function MarketFlowBotPage() {
   const [conversations, setConversations] = useState<
     AssistantConversation[]
   >([]);
-
   const [selectedConversationId, setSelectedConversationId] =
     useState<number | null>(null);
-
   const [messages, setMessages] = useState<ChatMessage[]>(
     []
   );
-
   const [input, setInput] = useState("");
   const [isLoadingConversations, setIsLoadingConversations] =
     useState(true);
@@ -105,7 +102,6 @@ export default function MarketFlowBotPage() {
         "Unable to load MarketFlow Bot conversations:",
         loadError
       );
-
       setError(
         "Unable to load your conversations. Please check that you are logged in and try again."
       );
@@ -138,7 +134,6 @@ export default function MarketFlowBotPage() {
         "Unable to load assistant conversation:",
         loadError
       );
-
       setError(
         "Unable to load this conversation. Please try again."
       );
@@ -164,7 +159,6 @@ export default function MarketFlowBotPage() {
         conversation,
         ...currentConversations,
       ]);
-
       setSelectedConversationId(conversation.id);
       setMessages([]);
     } catch (createError) {
@@ -172,7 +166,6 @@ export default function MarketFlowBotPage() {
         "Unable to create assistant conversation:",
         createError
       );
-
       setError(
         "Unable to start a new conversation. Please try again."
       );
@@ -227,7 +220,6 @@ export default function MarketFlowBotPage() {
         "Unable to delete assistant conversation:",
         deleteError
       );
-
       setError(
         "Unable to delete this conversation. Please try again."
       );
@@ -253,7 +245,6 @@ export default function MarketFlowBotPage() {
         conversation,
         ...currentConversations,
       ]);
-
       setSelectedConversationId(conversation.id);
 
       return conversation.id;
@@ -262,11 +253,9 @@ export default function MarketFlowBotPage() {
         "Unable to create assistant conversation:",
         createError
       );
-
       setError(
         "Unable to create a conversation. Please try again."
       );
-
       return null;
     }
   }
@@ -286,7 +275,6 @@ export default function MarketFlowBotPage() {
         "Unable to save assistant message:",
         saveError
       );
-
       setError(
         "The assistant responded, but this message could not be saved."
       );
@@ -327,7 +315,6 @@ export default function MarketFlowBotPage() {
     ];
 
     setMessages(updatedMessages);
-
     await saveMessage(conversationId, userMessage);
 
     try {
@@ -412,31 +399,33 @@ export default function MarketFlowBotPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
-            <Bot size={26} />
-          </div>
+      <div className="flex h-[calc(100dvh-8rem)] min-h-0 flex-col gap-4 overflow-hidden">
+        <div className="shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+              <Bot size={26} />
+            </div>
 
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-              MarketFlow Bot
-            </h1>
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+                MarketFlow Bot
+              </h1>
 
-            <p className="mt-1 text-slate-500 dark:text-slate-400">
-              Your dedicated AI research workspace.
-            </p>
+              <p className="mt-1 text-slate-500 dark:text-slate-400">
+                Your dedicated AI research workspace.
+              </p>
+            </div>
           </div>
         </div>
 
         {error && (
-          <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          <p className="shrink-0 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
             {error}
           </p>
         )}
 
-        <div className="grid min-h-[650px] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="grid min-h-0 flex-1 grid-rows-[13rem_minmax(0,1fr)] gap-4 overflow-hidden lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-1">
+          <aside className="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <div className="border-b border-slate-200 p-4 dark:border-slate-700">
               <button
                 type="button"
@@ -451,7 +440,7 @@ export default function MarketFlowBotPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
               <p className="px-2 pb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Previous conversations
               </p>
@@ -474,7 +463,6 @@ export default function MarketFlowBotPage() {
                     const isSelected =
                       conversation.id ===
                       selectedConversationId;
-
                     const isDeleting =
                       deletingConversationId ===
                       conversation.id;
@@ -549,7 +537,7 @@ export default function MarketFlowBotPage() {
             </div>
           </aside>
 
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <header className="flex items-center gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
                 <Sparkles size={20} />
@@ -569,7 +557,7 @@ export default function MarketFlowBotPage() {
 
             <div
               aria-busy={isLoadingMessages}
-              className="flex-1 space-y-4 overflow-y-auto p-5"
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5"
             >
               {isLoadingMessages ? (
                 <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
@@ -709,7 +697,7 @@ export default function MarketFlowBotPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-slate-200 p-5 dark:border-slate-700">
+            <div className="shrink-0 border-t border-slate-200 bg-white/95 p-5 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
               <form
                 onSubmit={handleSubmit}
                 className="flex items-end gap-3"
